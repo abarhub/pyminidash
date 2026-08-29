@@ -110,3 +110,26 @@ def _search(connection, jql: str, fields: list[str], max_results: int) -> list[R
 def jira_jql(connection, jql: str, fields: list[str],
             max_results: int = 50) -> list[Record]:
     return _search(connection, jql, fields, max_results)
+
+
+_MY_ISSUES_JQL = (
+    "assignee = currentUser() AND resolution = Unresolved ORDER BY updated DESC"
+)
+_MY_ISSUES_FIELDS = ["key", "summary", "status", "priority", "updated"]
+
+
+@provider("jira_jql_count")
+def jira_jql_count(connection, jql: str, warn_above: int | None = None,
+                   error_above: int | None = None) -> list[Record]:
+    page = get_json(connection, "/rest/api/2/search",
+                    params={"jql": jql, "maxResults": 0})
+    total = int(page.get("total", 0))
+    return [count_record("Total", total, warn_above=warn_above,
+                         error_above=error_above)]
+
+
+@provider("jira_my_issues")
+def jira_my_issues(connection, fields: list[str] | None = None,
+                   max_results: int = 50) -> list[Record]:
+    return _search(connection, _MY_ISSUES_JQL,
+                   fields or _MY_ISSUES_FIELDS, max_results)

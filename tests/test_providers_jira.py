@@ -100,3 +100,41 @@ def test_jira_jql_customfield():
     )
     records = jira_jql(CONN, "q", ["customfield_10001"])
     assert records[0].fields[0].value == "8"
+
+
+from pyminidash.providers.jira import jira_jql_count, jira_my_issues
+
+
+@respx.mock
+def test_jira_jql_count_reads_total_with_thresholds():
+    route = respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=httpx.Response(200, json={"total": 12, "issues": []})
+    )
+    records = jira_jql_count(CONN, "project = ABC", warn_above=5, error_above=10)
+    assert len(records) == 1
+    assert records[0].fields[0].value == "12"
+    assert records[0].fields[0].level is StatusLevel.ERROR
+    # maxResults=0 demandé
+    sent = route.calls.last.request.url
+    assert "maxResults=0" in str(sent)
+
+
+@respx.mock
+def test_jira_my_issues_uses_fixed_jql_and_default_fields():
+    route = respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=_search_response([_ISSUE])
+    )
+    records = jira_my_issues(CONN)
+    assert [x.key for x in records[0].fields] == ["key", "summary", "status", "priority", "updated"]
+    url = str(route.calls.last.request.url)
+    assert "currentUser" in url
+    assert "Unresolved" in url
+
+
+@respx.mock
+def test_jira_my_issues_field_override():
+    respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=_search_response([_ISSUE])
+    )
+    records = jira_my_issues(CONN, fields=["key", "summary"])
+    assert [x.key for x in records[0].fields] == ["key", "summary"]
