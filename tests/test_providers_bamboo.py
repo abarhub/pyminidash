@@ -60,6 +60,16 @@ def test_bamboo_plan_status_never_built_is_dash():
 
 
 @respx.mock
+def test_bamboo_plan_status_homogeneous_built_and_404():
+    respx.get("https://bam.example.com/rest/api/latest/result/P-OK/latest").mock(
+        return_value=_latest(_result()))
+    respx.get("https://bam.example.com/rest/api/latest/result/P-NOPE/latest").mock(
+        return_value=httpx.Response(404))
+    records = bamboo_plan_status(CONN, plans=["P-OK", "P-NOPE"])
+    assert len({r.keys() for r in records}) == 1
+
+
+@respx.mock
 def test_bamboo_plan_status_wrapped_results():
     respx.get("https://bam.example.com/rest/api/latest/result/PROJ-PLAN/latest").mock(
         return_value=httpx.Response(200, json={"results": {"result": [_result(state="Failed")]}}))
@@ -122,9 +132,21 @@ def test_bamboo_plan_health_counts():
     respx.get("https://bam.example.com/rest/api/latest/result/P-C/latest").mock(
         return_value=httpx.Response(404))
     rec = bamboo_plan_health(CONN, plans=["P-A", "P-B", "P-C"])[0]
+    assert [x.key for x in rec.fields] == ["title", "green", "red", "status"]
     assert rec.fields[1].value == 1   # green
     assert rec.fields[2].value == 1   # red
     assert rec.fields[3].level is StatusLevel.ERROR
+
+
+@respx.mock
+def test_bamboo_plan_health_all_unknown_is_neutral():
+    for key in ("P-A", "P-B"):
+        respx.get(f"https://bam.example.com/rest/api/latest/result/{key}/latest").mock(
+            return_value=httpx.Response(404))
+    rec = bamboo_plan_health(CONN, plans=["P-A", "P-B"])[0]
+    assert rec.fields[1].value == 0 and rec.fields[2].value == 0
+    assert rec.fields[3].value == "?"
+    assert rec.fields[3].level is StatusLevel.NEUTRAL
 
 
 def test_bamboo_plan_health_empty_raises():
@@ -160,6 +182,11 @@ def test_bamboo_running_skips_finished_plans():
     respx.get("https://bam.example.com/rest/api/latest/result/P-A/latest").mock(
         return_value=_latest(done))
     assert bamboo_running(CONN, plans=["P-A"]) == []
+
+
+def test_bamboo_running_empty_plans_raises():
+    with pytest.raises(ProviderError, match="vide"):
+        bamboo_running(CONN, plans=[])
 
 
 def test_bamboo_running_needs_exactly_one_target():

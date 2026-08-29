@@ -85,11 +85,26 @@ def test_bitbucket_pr_reviewers_needs_work():
 
 @respx.mock
 def test_bitbucket_pr_state_filter_and_role_requires_user():
-    respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    route = respx.get(BASE).mock(return_value=_page([_pr(1)]))
     bitbucket_pr(CONN, repo="ABC/r1", state="merged", fields=["id"])  # normalisé, ne lève pas
+    assert "state=MERGED" in str(route.calls.last.request.url)
     no_user = Connection(name="bb", base_url="https://bb.example.com", token="X")
     with pytest.raises(ProviderError, match="user"):
         bitbucket_pr(no_user, repo="ABC/r1", role="REVIEWER", fields=["id"])
+
+
+@respx.mock
+def test_bitbucket_pr_state_all_is_sent_explicitly():
+    route = respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    bitbucket_pr(CONN, repo="ABC/r1", state="ALL", fields=["id"])
+    assert "state=ALL" in str(route.calls.last.request.url)
+
+
+@respx.mock
+def test_bitbucket_pr_stale_days_requests_oldest_first():
+    route = respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    bitbucket_pr(CONN, repo="ABC/r1", fields=["id"], stale_days=7)
+    assert "order=OLDEST" in str(route.calls.last.request.url)
 
 
 @respx.mock
@@ -124,8 +139,31 @@ def test_bitbucket_pr_one_repo_fails_others_pass(caplog):
 def test_bitbucket_pr_all_repos_fail_raises():
     respx.get("https://bb.example.com/rest/api/1.0/projects/ABC/repos/r1/pull-requests").mock(
         return_value=httpx.Response(404))
-    with pytest.raises(ProviderError):
+    with pytest.raises(ProviderError, match="ABC/r1"):
         bitbucket_pr(CONN, repos=["ABC/r1"], fields=["id"])
+    # message names the repo, never the internal REST path
+    with pytest.raises(ProviderError) as exc:
+        bitbucket_pr(CONN, repos=["ABC/r1"], fields=["id"])
+    assert "/rest/api/" not in str(exc.value)
+
+
+@respx.mock
+def test_bitbucket_pr_all_repos_fail_names_every_repo():
+    for slug in ("r1", "r2"):
+        respx.get(f"https://bb.example.com/rest/api/1.0/projects/ABC/repos/{slug}/pull-requests").mock(
+            return_value=httpx.Response(404))
+    with pytest.raises(ProviderError, match="ABC/r1.*ABC/r2"):
+        bitbucket_pr(CONN, repos=["ABC/r1", "ABC/r2"], fields=["id"])
+
+
+@respx.mock
+def test_bitbucket_pr_count_all_repos_fail_names_every_repo():
+    for slug in ("r1", "r2"):
+        respx.get(f"https://bb.example.com/rest/api/1.0/projects/ABC/repos/{slug}/pull-requests").mock(
+            return_value=httpx.Response(404))
+    with pytest.raises(ProviderError, match="ABC/r1.*ABC/r2") as exc:
+        bitbucket_pr_count(CONN, repos=["ABC/r1", "ABC/r2"])
+    assert "/rest/api/" not in str(exc.value)
 
 
 @respx.mock
@@ -180,6 +218,24 @@ def test_bitbucket_pr_mergeable_api_error_is_question_mark():
     )
     rec = bitbucket_pr(CONN, repo="ABC/r1", fields=["mergeable"])[0]
     assert rec.fields[0].value == "?"
+    assert rec.fields[0].level is StatusLevel.NEUTRAL
+
+
+@respx.mock
+def test_records_are_homogeneous():
+    full = _pr(1)
+    stub = {"id": 2, "updatedDate": 100}
+    respx.get(BASE).mock(return_value=_page([full, stub]))
+    respx.get(url__regex=r".*/pull-requests/\d+/merge$").mock(
+        return_value=httpx.Response(500))
+    respx.get(url__regex=r".*/rest/build-status/1\.0/commits/.*").mock(
+        return_value=httpx.Response(200, json={"values": [{"state": "SUCCESSFUL"}]}))
+    records = bitbucket_pr(
+        CONN, repo="ABC/r1",
+        fields=["id", "title", "author", "build", "mergeable"],
+    )
+    assert len(records) == 2
+    assert len({r.keys() for r in records}) == 1
 
 
 @respx.mock
@@ -191,6 +247,14 @@ def test_bitbucket_pr_count_sums_repos():
     rec = bitbucket_pr_count(CONN, repos=["ABC/r1", "ABC/r2"], warn_above=2, error_above=5)[0]
     assert rec.fields[0].value == "3"
     assert rec.fields[0].level is StatusLevel.WARN
+
+
+@respx.mock
+def test_bitbucket_pr_count_saturates_with_plus():
+    full = [_pr(i) for i in range(200)]
+    respx.get(BASE).mock(return_value=_page(full, last=False, nxt=200))
+    rec = bitbucket_pr_count(CONN, repo="ABC/r1")[0]
+    assert rec.fields[0].value == "200+"
 
 
 @respx.mock

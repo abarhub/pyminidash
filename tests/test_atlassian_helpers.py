@@ -175,6 +175,8 @@ def test_epoch_ms_to_dt():
 def test_parse_iso():
     assert parse_iso("") is None
     assert parse_iso("2026-08-20T14:30:00Z").hour == 14
+    dt = parse_iso("2026-08-20T14:30:00.000+0200")
+    assert dt.year == 2026 and dt.hour == 14
     assert parse_iso("pas une date") == "pas une date"
 
 
@@ -188,6 +190,15 @@ def test_paginate_v1_walks_pages():
     got = list(paginate_v1(CONN, "/x"))
     assert [v["id"] for v in got] == [1, 2, 3]
     assert route.call_count == 2
+
+
+@respx.mock
+def test_paginate_v1_rejects_non_dict_page():
+    respx.get("https://jira.example.com/x").mock(
+        return_value=httpx.Response(200, json=[1, 2, 3])
+    )
+    with pytest.raises(ApiError, match="réponse inattendue"):
+        list(paginate_v1(CONN, "/x"))
 
 
 @respx.mock

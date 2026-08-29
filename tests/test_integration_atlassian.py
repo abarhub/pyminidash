@@ -85,3 +85,4 @@ def test_bitbucket_block_renders_table_fragment():
     assert "<th>PR</th>" in html
     assert "#7" in html and "Corrige le cache" in html and "Sam" in html
     assert "https://bb.example.com/pr/7" in html
+    assert "PAT" not in html
