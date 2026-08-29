@@ -17,6 +17,32 @@ cp config.example.toml config.toml   # puis adapter
 uv run pyminidash --config config.toml --port 8000 --open
 ```
 
+## Connexions et secrets
+
+Les providers Jira / Bitbucket / Bamboo passent par des **connexions**
+déclarées dans `config.toml` :
+
+    [connections.jira]
+    base_url = "https://jira.interne.example.com"
+    token    = "jira"          # clé dans secrets.toml
+    # user   = "jdupont"       # requis par les providers "mes ..." / "moi"
+    # verify = "/chemin/vers/ca-interne.pem"   # ou false pour ignorer le TLS
+
+Les **PAT** (Personal Access Tokens) vivent dans un fichier `secrets.toml`
+séparé, **git-ignoré**, à côté de `config.toml` (ou indiqué par `--secrets`) :
+
+    cp secrets.example.toml secrets.toml
+    # puis renseigner : jira = "...", bitbucket = "...", bamboo = "..."
+
+Un bloc référence sa connexion par le champ `connection` :
+
+    [[groups.blocks]]
+    provider   = "jira_jql"
+    connection = "jira"
+    params     = { jql = "project = ABC AND resolution = Unresolved", fields = ["key", "summary", "status"] }
+
+Le token n'apparaît jamais dans les logs ni dans l'interface.
+
 ## Providers intégrés
 
 | Provider | Usage | Paramètres |
@@ -25,6 +51,9 @@ uv run pyminidash --config config.toml --port 8000 --open
 | `top_processes` | table / cards | `limit: int = 10` |
 | `http_check` | table / cards | `urls: list[str]`, `timeout: float = 5` |
 | `http_json` | table | `url: str`, `rows_path: str`, `columns: list[str]`, `timeout: float = 5` |
+| `jira_jql` | table | connexion + `jql: str`, `fields: list[str]`, `max_results: int = 50` |
+| `jira_jql_count` | table | connexion + `jql: str`, `warn_above: int = None`, `error_above: int = None` |
+| `jira_my_issues` | table | connexion + `fields: list[str] = None`, `max_results: int = 50` |
 
 Ajouter un provider : écrire une fonction décorée `@provider("nom")` dans
 `pyminidash/providers/` renvoyant une `list[Record]`, et l'importer depuis

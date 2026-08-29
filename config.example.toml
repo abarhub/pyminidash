@@ -4,6 +4,21 @@
 title = "Mon dashboard"
 default_group = "system"
 
+[connections.jira]
+base_url = "https://jira.interne.example.com"
+token    = "jira"
+# verify = "/etc/pki/ca-trust/interne.pem"   # si CA interne
+
+[connections.bitbucket]
+base_url = "https://bitbucket.interne.example.com"
+token    = "bitbucket"
+user     = "jdupont"
+
+[connections.bamboo]
+base_url = "https://bamboo.interne.example.com"
+token    = "bamboo"
+user     = "jdupont"
+
 [[groups]]
 id = "system"
 title = "Système"
@@ -41,3 +56,13 @@ type = "table"
   title = "Utilisateurs (jsonplaceholder)"
   provider = "http_json"
   params = { url = "https://jsonplaceholder.typicode.com/users", rows_path = "$", columns = ["name", "email", "company.name"] }
+
+[[groups]]
+id = "mon-activite"
+title = "Mon activité"
+type = "table"
+
+  [[groups.blocks]]
+  title      = "Mes issues Jira"
+  provider   = "jira_my_issues"
+  connection = "jira"
