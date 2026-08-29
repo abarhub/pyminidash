@@ -87,6 +87,11 @@ def get_json(connection, path: str, *, params: dict | None = None,
         raise NotFoundError(f"ressource introuvable ({path})")
     if code == 400:
         raise ApiError(_api_message(resp) or f"requête refusée (400) sur {path}")
+    if 300 <= code < 400:
+        raise ApiError(
+            f"redirection inattendue ({code}) sur {path} — vérifiez base_url "
+            f"pour '{connection.name}' (portail SSO ?)"
+        )
     if code >= 400:
         raise ApiError(f"erreur HTTP {code} sur {path}")
 

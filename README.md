@@ -27,6 +27,7 @@ déclarées dans `config.toml` :
     token    = "jira"          # clé dans secrets.toml
     # user   = "jdupont"       # requis par les providers "mes ..." / "moi"
     # verify = "/chemin/vers/ca-interne.pem"   # ou false pour ignorer le TLS
+    #   (déconseillé : le token circule sans vérification du certificat)
 
 Les **PAT** (Personal Access Tokens) vivent dans un fichier `secrets.toml`
 séparé, **git-ignoré**, à côté de `config.toml` (ou indiqué par `--secrets`) :

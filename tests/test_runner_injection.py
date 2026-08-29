@@ -49,6 +49,19 @@ async def test_provider_error_message_has_no_type_prefix():
     assert "ProviderError" not in res.message
 
 
+async def test_missing_connection_renders_as_block_error():
+    @provider("needs_conn")
+    def needs_conn(connection):
+        return [Record(title("k", "K", "ok"))]
+
+    res = await run_block(
+        BlockConfig(provider="needs_conn", connection="jira"), {}
+    )
+    assert isinstance(res, BlockError)
+    assert "non initialisée" in res.message
+    assert "KeyError" not in res.message
+
+
 async def test_unexpected_exception_still_prefixed():
     @provider("crash")
     def crash(connection):

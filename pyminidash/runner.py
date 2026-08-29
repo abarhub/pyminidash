@@ -49,10 +49,15 @@ async def run_block(block: BlockConfig, connections: dict | None = None) -> Bloc
     timeout = block.timeout or DEFAULT_TIMEOUT
 
     kwargs = dict(block.params)
-    if "connection" in pdef.signature.parameters and block.connection is not None:
-        kwargs["connection"] = (connections or {})[block.connection]
 
     try:
+        if "connection" in pdef.signature.parameters and block.connection is not None:
+            conns = connections or {}
+            if block.connection not in conns:
+                raise ProviderError(
+                    f"connexion '{block.connection}' non initialisée"
+                )
+            kwargs["connection"] = conns[block.connection]
         result = await asyncio.wait_for(
             asyncio.to_thread(pdef.func, **kwargs), timeout
         )

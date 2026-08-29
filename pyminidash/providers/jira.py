@@ -86,15 +86,17 @@ def _search(connection, jql: str, fields: list[str], max_results: int) -> list[R
     issues: list[dict] = []
     start = 0
     while len(issues) < want:
-        page = get_json(connection, "/rest/api/2/search", params={
+        params = {
             "jql": jql,
-            "fields": ",".join(api_fields),
             "startAt": start,
             "maxResults": min(_PAGE, want - len(issues)),
-        })
+        }
+        if api_fields:
+            params["fields"] = ",".join(api_fields)
+        page = get_json(connection, "/rest/api/2/search", params=params)
         batch = page.get("issues") or []
         issues.extend(batch)
-        total = int(page.get("total", 0))
+        total = int(page.get("total") or 0)
         start += len(batch)
         if not batch or start >= total:
             break
@@ -123,7 +125,7 @@ def jira_jql_count(connection, jql: str, warn_above: int | None = None,
                    error_above: int | None = None) -> list[Record]:
     page = get_json(connection, "/rest/api/2/search",
                     params={"jql": jql, "maxResults": 0})
-    total = int(page.get("total", 0))
+    total = int(page.get("total") or 0)
     return [count_record("Total", total, warn_above=warn_above,
                          error_above=error_above)]
 

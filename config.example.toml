@@ -9,15 +9,16 @@ base_url = "https://jira.interne.example.com"
 token    = "jira"
 # verify = "/etc/pki/ca-trust/interne.pem"   # si CA interne
 
-[connections.bitbucket]
-base_url = "https://bitbucket.interne.example.com"
-token    = "bitbucket"
-user     = "jdupont"
-
-[connections.bamboo]
-base_url = "https://bamboo.interne.example.com"
-token    = "bamboo"
-user     = "jdupont"
+# Décommenter au Plan B (providers Bitbucket / Bamboo) :
+# [connections.bitbucket]
+# base_url = "https://bitbucket.interne.example.com"
+# token    = "bitbucket"
+# user     = "jdupont"
+#
+# [connections.bamboo]
+# base_url = "https://bamboo.interne.example.com"
+# token    = "bamboo"
+# user     = "jdupont"
 
 [[groups]]
 id = "system"

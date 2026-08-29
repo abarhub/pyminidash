@@ -37,7 +37,8 @@ class ConnectionConfig(BaseModel):
     @field_validator("token")
     @classmethod
     def _check_token(cls, v: str) -> str:
-        if not v.strip():
+        v = v.strip()
+        if not v:
             raise ValueError("token vide")
         return v
 

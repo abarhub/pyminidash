@@ -84,6 +84,42 @@ def test_jira_jql_paginates_to_max_results():
 
 
 @respx.mock
+def test_jira_jql_omits_fields_param_when_only_key():
+    route = respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=_search_response([_ISSUE])
+    )
+    jira_jql(CONN, "q", ["key"])
+    assert "fields=" not in str(route.calls.last.request.url)
+
+
+@respx.mock
+def test_jira_jql_sends_fields_param_when_non_key_requested():
+    route = respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=_search_response([_ISSUE])
+    )
+    jira_jql(CONN, "q", ["key", "summary"])
+    assert "fields=summary" in str(route.calls.last.request.url)
+
+
+@respx.mock
+def test_jira_jql_handles_null_total():
+    respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=httpx.Response(200, json={"issues": [_ISSUE], "total": None})
+    )
+    records = jira_jql(CONN, "q", ["key"], max_results=3)
+    assert len(records) == 1
+
+
+@respx.mock
+def test_jira_jql_count_handles_null_total():
+    respx.get("https://jira.example.com/rest/api/2/search").mock(
+        return_value=httpx.Response(200, json={"total": None, "issues": []})
+    )
+    records = jira_jql_count(CONN, "q")
+    assert records[0].fields[0].value == "0"
+
+
+@respx.mock
 def test_jira_jql_bad_jql_raises_api_error():
     respx.get("https://jira.example.com/rest/api/2/search").mock(
         return_value=httpx.Response(400, json={"errorMessages": ["Le champ 'foo' n'existe pas"]})

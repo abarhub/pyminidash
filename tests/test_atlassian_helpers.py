@@ -84,6 +84,62 @@ def test_get_json_ssl_error_mentions_tls():
         get_json(_FakeConn(), "/x")
 
 
+@respx.mock
+def test_get_json_timeout_is_conn_error():
+    respx.get("https://jira.example.com/x").mock(
+        side_effect=httpx.ReadTimeout("slow")
+    )
+    with pytest.raises(ConnError) as exc:
+        get_json(CONN, "/x")
+    assert "délai" in str(exc.value)
+    assert "jira" in str(exc.value)
+
+
+@respx.mock
+def test_get_json_500_is_generic_api_error():
+    respx.get("https://jira.example.com/x").mock(return_value=httpx.Response(500))
+    with pytest.raises(ApiError) as exc:
+        get_json(CONN, "/x")
+    assert "500" in str(exc.value)
+    assert not isinstance(exc.value, (AuthError, NotFoundError))
+
+
+@respx.mock
+def test_get_json_400_errors_dict_branch():
+    respx.get("https://jira.example.com/x").mock(return_value=httpx.Response(
+        400, json={"errors": {"jql": "champ inconnu"}}
+    ))
+    with pytest.raises(ApiError, match="jql"):
+        get_json(CONN, "/x")
+
+
+@respx.mock
+def test_get_json_400_message_string_branch():
+    respx.get("https://jira.example.com/x").mock(return_value=httpx.Response(
+        400, json={"message": "requête malformée"}
+    ))
+    with pytest.raises(ApiError, match="malformée"):
+        get_json(CONN, "/x")
+
+
+@respx.mock
+def test_get_json_non_json_2xx():
+    respx.get("https://jira.example.com/x").mock(
+        return_value=httpx.Response(200, text="<html>not json</html>")
+    )
+    with pytest.raises(ApiError, match="non-JSON"):
+        get_json(CONN, "/x")
+
+
+@respx.mock
+def test_get_json_3xx_redirect_is_api_error():
+    respx.get("https://jira.example.com/x").mock(
+        return_value=httpx.Response(302, headers={"Location": "/login"})
+    )
+    with pytest.raises(ApiError, match="redirection"):
+        get_json(CONN, "/x")
+
+
 def test_count_record_thresholds():
     r_ok = count_record("Total", 3, warn_above=5, error_above=10)
     assert r_ok.fields[0].type is FieldType.STATUS

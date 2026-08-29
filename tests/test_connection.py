@@ -1,3 +1,5 @@
+import logging
+
 import httpx
 import pytest
 
@@ -20,8 +22,29 @@ def test_build_resolves_token():
 
 
 def test_missing_token_raises():
-    with pytest.raises(ConfigError, match="clé de token 'jira'"):
+    with pytest.raises(ConfigError, match="absente de secrets.toml"):
         build_connections(_config(), {})
+
+
+def test_missing_token_error_does_not_echo_field_value():
+    # le message ne doit pas ré-afficher une valeur collée dans le champ token
+    with pytest.raises(ConfigError) as exc:
+        build_connections(_config(), {"autre": "x"})
+    assert "clés disponibles : autre" in str(exc.value)
+
+
+def test_empty_token_value_raises():
+    with pytest.raises(ConfigError, match="vide"):
+        build_connections(_config(), {"jira": "   "})
+
+
+def test_verify_false_logs_warning(caplog):
+    with caplog.at_level(logging.WARNING, logger="pyminidash.connection"):
+        build_connections(_config(verify=False), {"jira": "x"})
+    assert any(
+        "verify" in r.getMessage() and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
 
 
 def test_missing_ca_file_raises(tmp_path):
