@@ -298,10 +298,17 @@ séparés par `.`), pas de JSONPath complet. `$` désigne la racine.
 ### Providers envisagés plus tard
 
 Non couverts par cette spec, mais l'architecture doit rester simple à étendre
-dans ce sens : Jira, Bitbucket, Bamboo, et autres intégrations d'outils. Chacun
-sera un nouveau module dans `providers/` avec ses fonctions décorées `@provider`.
-La gestion des secrets (tokens d'API) pour ces providers sera traitée à ce
-moment-là, hors de cette spec.
+dans ce sens :
+
+- **Intégrations d'outils** : Jira, Bitbucket, Bamboo, etc.
+- **Inspection de projets locaux** : pour un dépôt donné, remonter la version du
+  projet, la version de Spring Boot, la version d'Angular, l'état Git (dernier
+  commit — date / hash / libellé, présence de fichiers non commités, branche
+  courante), etc.
+
+Chacun sera un nouveau module dans `providers/` avec ses fonctions décorées
+`@provider`. La gestion des secrets (tokens d'API) pour les providers qui en ont
+besoin sera traitée à ce moment-là, hors de cette spec.
 
 ## 8. Structure du projet
 
