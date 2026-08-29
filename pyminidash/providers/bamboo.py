@@ -8,15 +8,17 @@ from pyminidash.models import (
     FieldRole, Record, StatusLevel, datetime_, duration, link, number, status, text,
 )
 from pyminidash.providers._atlassian import (
-    NotFoundError, count_record, get_json, parse_iso, strip_html,
+    NotFoundError, get_json, parse_iso, strip_html,
 )
 from pyminidash.registry import provider
 
 log = logging.getLogger("pyminidash.providers.bamboo")
 
+_STATE_SUCCESS = "Successful"
+_STATE_FAILED = "Failed"
 _STATE_LEVEL = {
-    "Successful": StatusLevel.OK,
-    "Failed": StatusLevel.ERROR,
+    _STATE_SUCCESS: StatusLevel.OK,
+    _STATE_FAILED: StatusLevel.ERROR,
     "InProgress": StatusLevel.NEUTRAL,
     "Unknown": StatusLevel.NEUTRAL,
 }
@@ -63,8 +65,11 @@ def _plan_field(name, result, base_url, plan_key):
         return number("number", "Build", r.get("buildNumber"))
     if name == "duration":
         secs = r.get("buildDurationInSeconds")
-        return duration("duration", "Durée",
-                        int(secs) if secs not in (None, "") else None)
+        try:
+            val = int(secs) if secs not in (None, "") else None
+        except (ValueError, TypeError):
+            val = None
+        return duration("duration", "Durée", val)
     if name == "finished":
         return datetime_("finished", "Terminé", parse_iso(r.get("buildCompletedTime")))
     if name == "trigger":
@@ -174,15 +179,24 @@ def bamboo_plan_health(connection, plans) -> list[Record]:
     green = red = 0
     for plan_key in plans:
         st = (_plan_result(connection, plan_key) or {}).get("buildState")
-        if st == "Successful":
+        if st == _STATE_SUCCESS:
             green += 1
-        elif st == "Failed":
+        elif st == _STATE_FAILED:
             red += 1
+    unknown = len(plans) - green - red
+    if red:
+        level, label = StatusLevel.ERROR, "KO"
+    elif unknown:
+        level, label = StatusLevel.NEUTRAL, "?"
+    else:
+        level, label = StatusLevel.OK, "OK"
+    title_txt = f"{green} vert / {red} rouge"
+    if unknown:
+        title_txt += f" / {unknown} ?"
     return [Record(
-        text("title", "Santé des plans", f"{green} vert / {red} rouge"),
+        text("title", "Santé des plans", title_txt),
         number("green", "Au vert", green, summary=True),
         number("red", "Au rouge", red, summary=True),
-        status("status", "Global", "KO" if red else "OK",
-               level=StatusLevel.ERROR if red else StatusLevel.OK,
-               role=FieldRole.BADGE, summary=True),
+        status("status", "Global", label, level=level, role=FieldRole.BADGE,
+               summary=True),
     )]

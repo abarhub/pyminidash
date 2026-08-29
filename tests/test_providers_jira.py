@@ -5,7 +5,7 @@ import respx
 from pyminidash.connection import Connection
 from pyminidash.models import FieldRole, FieldType, StatusLevel
 from pyminidash.providers._atlassian import ApiError
-from pyminidash.providers.jira import _parse_dt, _status_level, jira_jql
+from pyminidash.providers.jira import _status_level, jira_jql
 
 CONN = Connection(name="jira", base_url="https://jira.example.com", token="PAT")
 
@@ -35,12 +35,6 @@ def test_status_level_heuristic():
     assert _status_level(" Terminé ") is StatusLevel.OK
     assert _status_level("Blocked") is StatusLevel.ERROR
     assert _status_level("In Progress") is StatusLevel.NEUTRAL
-
-
-def test_parse_dt():
-    assert _parse_dt("") is None
-    dt = _parse_dt("2026-08-20T14:30:00.000+0200")
-    assert dt.year == 2026 and dt.hour == 14
 
 
 @respx.mock

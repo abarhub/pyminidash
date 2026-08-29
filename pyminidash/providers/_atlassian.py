@@ -13,6 +13,8 @@ import httpx
 from pyminidash.errors import ProviderError
 from pyminidash.models import Record, StatusLevel, status
 
+HARD_CAP = 200
+
 
 class AtlassianError(ProviderError):
     """Base des erreurs d'API Atlassian (message déjà destiné à l'utilisateur)."""
@@ -64,7 +66,7 @@ def _api_message(resp: httpx.Response) -> str | None:
 
 
 def get_json(connection, path: str, *, params: dict | None = None,
-             timeout: float = 15.0) -> Any:
+             timeout: float = 8.0) -> Any:
     try:
         with connection.client(timeout=timeout) as client:
             resp = client.get(path, params=params)
@@ -106,13 +108,15 @@ def get_json(connection, path: str, *, params: dict | None = None,
 
 
 def count_record(label: str, count: int, *, warn_above: int | None = None,
-                 error_above: int | None = None) -> Record:
+                 error_above: int | None = None,
+                 display: str | None = None) -> Record:
     level = StatusLevel.OK
     if error_above is not None and count > error_above:
         level = StatusLevel.ERROR
     elif warn_above is not None and count > warn_above:
         level = StatusLevel.WARN
-    return Record(status("count", label, str(count), level=level, summary=True))
+    return Record(status("count", label, display or str(count), level=level,
+                         summary=True))
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -143,7 +147,7 @@ def parse_iso(value):
 
 
 def paginate_v1(connection, path: str, *, params: dict | None = None,
-                hard_cap: int = 200, timeout: float = 15.0) -> Iterator[dict]:
+                hard_cap: int = HARD_CAP, timeout: float = 8.0) -> Iterator[dict]:
     query = dict(params or {})
     start = 0
     yielded = 0
@@ -151,6 +155,10 @@ def paginate_v1(connection, path: str, *, params: dict | None = None,
         query["start"] = start
         query["limit"] = min(100, hard_cap - yielded)
         page = get_json(connection, path, params=query, timeout=timeout)
+        if not isinstance(page, dict):
+            raise ApiError(
+                f"réponse inattendue (liste) de '{connection.name}' sur {path}"
+            )
         values = page.get("values") or []
         for value in values:
             yield value

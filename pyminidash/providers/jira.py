@@ -1,15 +1,14 @@
 """Providers Jira Server/DC : recherche JQL, compteur, raccourci « mes issues »."""
 from __future__ import annotations
 
-from datetime import datetime
-
 from pyminidash.models import (
     Field, FieldRole, Record, StatusLevel, datetime_, link, status, text,
 )
-from pyminidash.providers._atlassian import count_record, get_json
+from pyminidash.providers._atlassian import (
+    HARD_CAP, count_record, get_json, parse_iso,
+)
 from pyminidash.registry import provider
 
-_HARD_CAP = 200
 _PAGE = 100
 _DONE = {"done", "closed", "resolved", "terminé", "fermé"}
 _BLOCKED = {"blocked", "impediment", "bloqué"}
@@ -22,15 +21,6 @@ def _status_level(name: str) -> StatusLevel:
     if low in _BLOCKED:
         return StatusLevel.ERROR
     return StatusLevel.NEUTRAL
-
-
-def _parse_dt(value):
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return value
 
 
 def _names(seq) -> str:
@@ -66,7 +56,7 @@ def _issue_field(name: str, issue: dict, base_url: str) -> Field:
         return text(name, label, _names(f.get(name)))
     if name in ("created", "updated"):
         label = "Créé" if name == "created" else "Mis à jour"
-        return datetime_(name, label, _parse_dt(f.get(name)))
+        return datetime_(name, label, parse_iso(f.get(name)))
     if name == "parent":
         return text("parent", "Parent", ((f.get("parent") or {}).get("key")) or "")
 
@@ -81,7 +71,7 @@ def _issue_field(name: str, issue: dict, base_url: str) -> Field:
 def _search(connection, jql: str, fields: list[str], max_results: int) -> list[Record]:
     base_url = connection.base_url
     api_fields = [n for n in fields if n != "key"]
-    want = min(max_results, _HARD_CAP)
+    want = min(max_results, HARD_CAP)
 
     issues: list[dict] = []
     start = 0

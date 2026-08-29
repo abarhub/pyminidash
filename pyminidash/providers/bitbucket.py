@@ -9,13 +9,13 @@ from pyminidash.models import (
     FieldRole, Record, StatusLevel, datetime_, link, number, status, text,
 )
 from pyminidash.providers._atlassian import (
-    AtlassianError, count_record, epoch_ms_to_dt, get_json, paginate_v1,
+    HARD_CAP, AtlassianError, NotFoundError, count_record, epoch_ms_to_dt,
+    get_json, paginate_v1,
 )
 from pyminidash.registry import provider
 
 log = logging.getLogger("pyminidash.providers.bitbucket")
 
-_HARD_CAP = 200
 _STATES = {"OPEN", "MERGED", "DECLINED", "ALL"}
 _ROLES = {None, "REVIEWER", "AUTHOR"}
 _DEFAULT_FIELDS = ["id", "title", "author", "reviewers", "branches", "updated"]
@@ -54,6 +54,8 @@ def resolve_repos(connection, *, repo=None, repos=None, project=None) -> list[tu
 def _pr_field(name, pr):
     if name == "id":
         pid = pr.get("id")
+        if not pid:
+            return text("id", "PR", "")
         href = (((pr.get("links") or {}).get("self") or [{}])[0]).get("href") or ""
         return link("id", "PR", f"#{pid}", url=href, role=FieldRole.TITLE)
     if name == "title":
@@ -141,13 +143,19 @@ def _pr_record(connection, pr, fields, project, slug):
 
 
 def _pr_query(state: str, role, connection) -> dict:
-    query: dict = {}
-    if state != "ALL":
-        query["state"] = state
+    # "ALL" is a valid Bitbucket Server value; omitting `state` would silently
+    # default to OPEN, so always send it explicitly.
+    query: dict = {"state": state}
     if role is not None:
         query["role.1"] = role
         query["username.1"] = connection.user
     return query
+
+
+def _repo_error(proj: str, slug: str, exc: AtlassianError) -> AtlassianError:
+    if isinstance(exc, NotFoundError):
+        return NotFoundError(f"bitbucket : dépôt '{proj}/{slug}' introuvable")
+    return exc
 
 
 @provider("bitbucket_pr")
@@ -159,6 +167,7 @@ def bitbucket_pr(connection, repo=None, repos=None, project=None, state="OPEN",
         raise ProviderError(
             f"bitbucket_pr : state '{state}' invalide (OPEN, MERGED, DECLINED, ALL)"
         )
+    role = role.upper() if role is not None else None
     if role not in _ROLES:
         raise ProviderError(
             f"bitbucket_pr : role '{role}' invalide (REVIEWER, AUTHOR)"
@@ -170,6 +179,11 @@ def bitbucket_pr(connection, repo=None, repos=None, project=None, state="OPEN",
     fields = fields or _DEFAULT_FIELDS
     targets = resolve_repos(connection, repo=repo, repos=repos, project=project)
     query = _pr_query(state, role, connection)
+    if stale_days is not None:
+        # The 200-item cap keeps the first page Bitbucket returns; ask for
+        # oldest-first so the cap keeps the stale PRs stale_days is about. The
+        # final sort below still presents the table newest-first.
+        query["order"] = "OLDEST"
 
     cutoff = None
     if stale_days is not None:
@@ -181,9 +195,9 @@ def bitbucket_pr(connection, repo=None, repos=None, project=None, state="OPEN",
     for proj, slug in targets:
         path = f"/rest/api/1.0/projects/{proj}/repos/{slug}/pull-requests"
         try:
-            prs = list(paginate_v1(connection, path, params=query, hard_cap=_HARD_CAP))
+            prs = list(paginate_v1(connection, path, params=query, hard_cap=HARD_CAP))
         except AtlassianError as exc:
-            last_error = exc
+            last_error = _repo_error(proj, slug, exc)
             log.warning("bitbucket_pr : dépôt %s/%s : %s", proj, slug, exc)
             continue
         ok_repos += 1
@@ -194,10 +208,15 @@ def bitbucket_pr(connection, repo=None, repos=None, project=None, state="OPEN",
             scored.append((updated, _pr_record(connection, pr, fields, proj, slug)))
 
     if ok_repos == 0 and last_error is not None:
+        if len(targets) > 1:
+            failed = ", ".join(f"{p}/{s}" for p, s in targets)
+            raise ProviderError(
+                f"bitbucket : aucun dépôt accessible ({failed}) — {last_error}"
+            )
         raise last_error
 
     scored.sort(key=lambda t: t[0], reverse=True)
-    return [rec for _, rec in scored[: min(max_results, _HARD_CAP)]]
+    return [rec for _, rec in scored[: min(max_results, HARD_CAP)]]
 
 
 _MY_REVIEW_FIELDS = ["id", "title", "author", "reviewers", "updated"]
@@ -212,8 +231,11 @@ def bitbucket_pr_count(connection, repo=None, repos=None, project=None,
         raise ProviderError(
             f"bitbucket_pr_count : state '{state}' invalide (OPEN, MERGED, DECLINED, ALL)"
         )
+    role = role.upper() if role is not None else None
     if role not in _ROLES:
-        raise ProviderError(f"bitbucket_pr_count : role '{role}' invalide")
+        raise ProviderError(
+            f"bitbucket_pr_count : role '{role}' invalide (REVIEWER, AUTHOR)"
+        )
     if role is not None and not connection.user:
         raise ProviderError(
             f"connexion '{connection.name}' : renseignez user pour filtrer par rôle"
@@ -222,23 +244,35 @@ def bitbucket_pr_count(connection, repo=None, repos=None, project=None,
     query = _pr_query(state, role, connection)
 
     total = 0
+    capped = False
     last_error: AtlassianError | None = None
     ok_repos = 0
     for proj, slug in targets:
         path = f"/rest/api/1.0/projects/{proj}/repos/{slug}/pull-requests"
         try:
-            total += sum(
-                1 for _ in paginate_v1(connection, path, params=query, hard_cap=_HARD_CAP)
+            n = sum(
+                1 for _ in paginate_v1(connection, path, params=query, hard_cap=HARD_CAP)
             )
         except AtlassianError as exc:
-            last_error = exc
+            last_error = _repo_error(proj, slug, exc)
             log.warning("bitbucket_pr_count : dépôt %s/%s : %s", proj, slug, exc)
             continue
+        if n >= HARD_CAP:
+            capped = True
+        total += n
         ok_repos += 1
 
     if ok_repos == 0 and last_error is not None:
+        if len(targets) > 1:
+            failed = ", ".join(f"{p}/{s}" for p, s in targets)
+            raise ProviderError(
+                f"bitbucket : aucun dépôt accessible ({failed}) — {last_error}"
+            )
         raise last_error
-    return [count_record("Total", total, warn_above=warn_above, error_above=error_above)]
+
+    label = f"{total}+" if capped else str(total)
+    return [count_record("Total", total, warn_above=warn_above,
+                         error_above=error_above, display=label)]
 
 
 @provider("bitbucket_my_review")
