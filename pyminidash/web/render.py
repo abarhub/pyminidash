@@ -28,6 +28,8 @@ class CardView:
 
 
 def to_table(records: list[Record]) -> TableView:
+    if not records:
+        return TableView(columns=[], rows=[])
     columns = [Column(f.key, f.label) for f in records[0].fields]
     rows = [list(r.fields) for r in records]
     return TableView(columns=columns, rows=rows)

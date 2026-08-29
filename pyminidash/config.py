@@ -19,7 +19,7 @@ class BlockConfig(BaseModel):
     provider: str
     params: dict[str, Any] = PField(default_factory=dict)
     title: str | None = None
-    timeout: float | None = None
+    timeout: float | None = PField(default=None, gt=0)
 
 
 class GroupConfig(BaseModel):

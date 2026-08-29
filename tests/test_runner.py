@@ -1,5 +1,3 @@
-import pytest
-
 from pyminidash.config import BlockConfig
 from pyminidash.models import Record, text
 from pyminidash.registry import provider

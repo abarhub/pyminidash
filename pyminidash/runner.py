@@ -51,8 +51,13 @@ async def run_block(block: BlockConfig) -> BlockResult:
             asyncio.to_thread(pdef.func, **block.params), timeout
         )
     except (asyncio.TimeoutError, TimeoutError):
-        log.warning("bloc '%s' : timeout après %gs", block.provider, timeout)
-        return BlockError("timeout", f"timeout après {timeout:g} s")
+        # asyncio.wait_for annule le *future*, pas le thread : le worker est
+        # abandonné, pas interrompu — le provider continue jusqu'au bout dans le
+        # threadpool par défaut. Les providers intégrés sont auto-bornés (httpx
+        # porte son propre timeout, les appels psutil sont finis) ; tout nouveau
+        # provider faisant de l'I/O bloquante DOIT imposer son propre timeout.
+        log.warning("bloc '%s' : délai dépassé (%gs)", block.provider, timeout)
+        return BlockError("timeout", f"délai dépassé ({timeout:g} s)")
     except Exception as exc:  # noqa: BLE001 — on veut tout attraper
         log.exception("bloc '%s' : exception du provider", block.provider)
         return BlockError("exception", f"{type(exc).__name__}: {exc}")

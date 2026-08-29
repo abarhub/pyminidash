@@ -30,6 +30,10 @@ Ajouter un provider : écrire une fonction décorée `@provider("nom")` dans
 `pyminidash/providers/` renvoyant une `list[Record]`, et l'importer depuis
 `pyminidash/providers/__init__.py`.
 
+Un provider qui fait de l'I/O bloquante doit imposer son propre timeout : le
+`timeout` du bloc borne seulement l'`await`, pas le thread worker (qui continue de
+tourner jusqu'au bout même après un délai dépassé).
+
 ## Développement
 
 ```bash

@@ -1,7 +1,7 @@
 document.addEventListener("click", (event) => {
   const target = event.target;
 
-  if (target.id === "recalc-all") {
+  if (event.target.closest("#recalc-all")) {
     document.querySelectorAll(".block-body").forEach((el) => {
       window.htmx.trigger(el, "refresh");
     });
@@ -10,6 +10,7 @@ document.addEventListener("click", (event) => {
 
   if (target.classList.contains("card-toggle")) {
     const card = target.closest(".card");
+    if (!card) return;
     const more = card.querySelector(".more");
     if (!more) return;
     const hiddenNow = more.hasAttribute("hidden");

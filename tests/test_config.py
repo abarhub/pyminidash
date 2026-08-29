@@ -112,6 +112,32 @@ def test_bad_group_type(tmp_path, dummy_providers):
         load_config(p)
 
 
+def test_non_positive_timeout_rejected(tmp_path, dummy_providers):
+    p = _write(tmp_path, """
+        [[groups]]
+        id = "g1"
+        title = "A"
+        type = "table"
+          [[groups.blocks]]
+          provider = "dummy_rows"
+          timeout = 0
+    """)
+    with pytest.raises(ConfigError):
+        load_config(p)
+
+    p2 = _write(tmp_path, """
+        [[groups]]
+        id = "g1"
+        title = "A"
+        type = "table"
+          [[groups.blocks]]
+          provider = "dummy_rows"
+          timeout = -1
+    """)
+    with pytest.raises(ConfigError):
+        load_config(p2)
+
+
 def test_empty_blocks_rejected(tmp_path, dummy_providers):
     p = _write(tmp_path, """
         [[groups]]

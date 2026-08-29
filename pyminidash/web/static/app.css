@@ -30,6 +30,7 @@ button:hover { background: #363636; }
 }
 .block-head .meta { color: #9a9a9a; font-size: 12px; margin-left: 8px; }
 .loading, .empty, .block-error { padding: 12px; color: #9a9a9a; }
+.block-body.htmx-request { opacity: .45; transition: opacity .1s; }
 .block-error { color: #fca5a5; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }

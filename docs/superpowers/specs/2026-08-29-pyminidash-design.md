@@ -295,6 +295,16 @@ l'affichage navigateur.
 `rows_path` et le chemin de `columns` : notation pointée simple (segments
 séparés par `.`), pas de JSONPath complet. `$` désigne la racine.
 
+> **Note (déviation acceptée sur les clés de champ).** L'implémentation utilise
+> des clés plus courtes que la prose ci-dessus. Rien ne consomme ces clés ; les
+> valeurs ci-dessous font foi et remplacent la prose antérieure de cette section :
+> - `http_check` : `host` (title), `state` (status), `code` (number), `latency`
+>   (duration), `url` (link, caché), `error` (text, caché), `checked_at`
+>   (datetime, caché). `host` porte le titre, `url` est un lien caché — pas de
+>   champ « url (title/link) » unique.
+> - `top_processes` : `name` (title), `cpu` (number/badge), `memory` (bytes),
+>   `pid` (number), `username` (text), `status` (text).
+
 ### Providers envisagés plus tard
 
 Non couverts par cette spec, mais l'architecture doit rester simple à étendre

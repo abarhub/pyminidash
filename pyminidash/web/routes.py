@@ -43,6 +43,7 @@ def group_page(request: Request, group_id: str) -> HTMLResponse:
 @router.get("/groups/{group_id}/blocks/{index}", response_class=HTMLResponse)
 async def block_fragment(request: Request, group_id: str, index: int) -> HTMLResponse:
     group = _get_group(request, group_id)
+    # FastAPI parses negative ints as valid; this guard is load-bearing, not dead code
     if index < 0 or index >= len(group.blocks):
         raise HTTPException(status_code=404, detail="bloc inexistant")
     block = group.blocks[index]

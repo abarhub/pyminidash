@@ -10,6 +10,13 @@ def test_level_for_percent_thresholds():
     assert _level_for_percent(95) is StatusLevel.ERROR
 
 
+def test_level_for_percent_boundaries():
+    assert _level_for_percent(75) is StatusLevel.WARN
+    assert _level_for_percent(74) is StatusLevel.OK
+    assert _level_for_percent(90) is StatusLevel.ERROR
+    assert _level_for_percent(89) is StatusLevel.WARN
+
+
 def test_disk_usage_on_tmp_path(tmp_path):
     records = disk_usage([str(tmp_path)])
     assert len(records) == 1
