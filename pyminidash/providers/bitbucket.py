@@ -9,7 +9,7 @@ from pyminidash.models import (
     FieldRole, Record, StatusLevel, datetime_, link, number, status, text,
 )
 from pyminidash.providers._atlassian import (
-    AtlassianError, epoch_ms_to_dt, get_json, paginate_v1,
+    AtlassianError, count_record, epoch_ms_to_dt, get_json, paginate_v1,
 )
 from pyminidash.registry import provider
 
@@ -198,3 +198,54 @@ def bitbucket_pr(connection, repo=None, repos=None, project=None, state="OPEN",
 
     scored.sort(key=lambda t: t[0], reverse=True)
     return [rec for _, rec in scored[: min(max_results, _HARD_CAP)]]
+
+
+_MY_REVIEW_FIELDS = ["id", "title", "author", "reviewers", "updated"]
+
+
+@provider("bitbucket_pr_count")
+def bitbucket_pr_count(connection, repo=None, repos=None, project=None,
+                       state="OPEN", role=None, warn_above=None,
+                       error_above=None) -> list[Record]:
+    state = str(state).upper()
+    if state not in _STATES:
+        raise ProviderError(
+            f"bitbucket_pr_count : state '{state}' invalide (OPEN, MERGED, DECLINED, ALL)"
+        )
+    if role not in _ROLES:
+        raise ProviderError(f"bitbucket_pr_count : role '{role}' invalide")
+    if role is not None and not connection.user:
+        raise ProviderError(
+            f"connexion '{connection.name}' : renseignez user pour filtrer par rôle"
+        )
+    targets = resolve_repos(connection, repo=repo, repos=repos, project=project)
+    query = _pr_query(state, role, connection)
+
+    total = 0
+    last_error: AtlassianError | None = None
+    ok_repos = 0
+    for proj, slug in targets:
+        path = f"/rest/api/1.0/projects/{proj}/repos/{slug}/pull-requests"
+        try:
+            total += sum(
+                1 for _ in paginate_v1(connection, path, params=query, hard_cap=_HARD_CAP)
+            )
+        except AtlassianError as exc:
+            last_error = exc
+            log.warning("bitbucket_pr_count : dépôt %s/%s : %s", proj, slug, exc)
+            continue
+        ok_repos += 1
+
+    if ok_repos == 0 and last_error is not None:
+        raise last_error
+    return [count_record("Total", total, warn_above=warn_above, error_above=error_above)]
+
+
+@provider("bitbucket_my_review")
+def bitbucket_my_review(connection, repo=None, repos=None, project=None,
+                        fields=None, max_results=50) -> list[Record]:
+    return bitbucket_pr(
+        connection, repo=repo, repos=repos, project=project,
+        state="OPEN", role="REVIEWER",
+        fields=fields or _MY_REVIEW_FIELDS, max_results=max_results,
+    )

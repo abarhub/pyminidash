@@ -8,7 +8,7 @@ from pyminidash.connection import Connection
 from pyminidash.errors import ProviderError
 from pyminidash.models import FieldRole, FieldType, StatusLevel
 from pyminidash.providers.bitbucket import (
-    _split_repo, bitbucket_pr, resolve_repos,
+    _split_repo, bitbucket_my_review, bitbucket_pr, bitbucket_pr_count, resolve_repos,
 )
 
 CONN = Connection(name="bb", base_url="https://bb.example.com", token="PAT", user="jdupont")
@@ -180,3 +180,23 @@ def test_bitbucket_pr_mergeable_api_error_is_question_mark():
     )
     rec = bitbucket_pr(CONN, repo="ABC/r1", fields=["mergeable"])[0]
     assert rec.fields[0].value == "?"
+
+
+@respx.mock
+def test_bitbucket_pr_count_sums_repos():
+    respx.get("https://bb.example.com/rest/api/1.0/projects/ABC/repos/r1/pull-requests").mock(
+        return_value=_page([_pr(1), _pr(2)]))
+    respx.get("https://bb.example.com/rest/api/1.0/projects/ABC/repos/r2/pull-requests").mock(
+        return_value=_page([_pr(3)]))
+    rec = bitbucket_pr_count(CONN, repos=["ABC/r1", "ABC/r2"], warn_above=2, error_above=5)[0]
+    assert rec.fields[0].value == "3"
+    assert rec.fields[0].level is StatusLevel.WARN
+
+
+@respx.mock
+def test_bitbucket_my_review_uses_reviewer_role():
+    route = respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    records = bitbucket_my_review(CONN, repo="ABC/r1")
+    assert [x.key for x in records[0].fields] == ["id", "title", "author", "reviewers", "updated"]
+    url = str(route.calls.last.request.url)
+    assert "role.1=REVIEWER" in url and "username.1=jdupont" in url
