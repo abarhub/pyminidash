@@ -9,16 +9,15 @@ base_url = "https://jira.interne.example.com"
 token    = "jira"
 # verify = "/etc/pki/ca-trust/interne.pem"   # si CA interne
 
-# Décommenter au Plan B (providers Bitbucket / Bamboo) :
-# [connections.bitbucket]
-# base_url = "https://bitbucket.interne.example.com"
-# token    = "bitbucket"
-# user     = "jdupont"
-#
-# [connections.bamboo]
-# base_url = "https://bamboo.interne.example.com"
-# token    = "bamboo"
-# user     = "jdupont"
+[connections.bitbucket]
+base_url = "https://bitbucket.interne.example.com"
+token    = "bitbucket"
+user     = "jdupont"
+
+[connections.bamboo]
+base_url = "https://bamboo.interne.example.com"
+token    = "bamboo"
+user     = "jdupont"
 
 [[groups]]
 id = "system"
@@ -67,3 +66,14 @@ type = "table"
   title      = "Mes issues Jira"
   provider   = "jira_my_issues"
   connection = "jira"
+
+  [[groups.blocks]]
+  title      = "PR à relire"
+  provider   = "bitbucket_my_review"
+  connection = "bitbucket"
+  params     = { project = "ABC" }
+
+  [[groups.blocks]]
+  title      = "Mes derniers builds"
+  provider   = "bamboo_user_builds"
+  connection = "bamboo"

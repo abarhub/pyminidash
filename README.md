@@ -44,6 +44,9 @@ Un bloc référence sa connexion par le champ `connection` :
 
 Le token n'apparaît jamais dans les logs ni dans l'interface.
 
+Les colonnes optionnelles `build` / `mergeable` de `bitbucket_pr` déclenchent
+un appel d'API supplémentaire par PR.
+
 ## Providers intégrés
 
 | Provider | Usage | Paramètres |
@@ -55,6 +58,13 @@ Le token n'apparaît jamais dans les logs ni dans l'interface.
 | `jira_jql` | table | connexion + `jql: str`, `fields: list[str]`, `max_results: int = 50` |
 | `jira_jql_count` | table | connexion + `jql: str`, `warn_above: int = None`, `error_above: int = None` |
 | `jira_my_issues` | table | connexion + `fields: list[str] = None`, `max_results: int = 50` |
+| `bitbucket_pr` | Pull requests d'un dépôt / d'une liste / d'un projet | `repo` \| `repos` \| `project`, `state`, `role`, `fields`, `stale_days`, `max_results` |
+| `bitbucket_pr_count` | Compteur de PR (avec seuils) | idem portée + `state`, `role`, `warn_above`, `error_above` |
+| `bitbucket_my_review` | PR ouvertes où je suis reviewer (exige `user`) | portée + `fields`, `max_results` |
+| `bamboo_plan_status` | Dernier build de chaque plan | `plans`, `fields` |
+| `bamboo_user_builds` | Builds récents déclenchés par un utilisateur | `user` (défaut = `connection.user`), `max_results`, `scan` |
+| `bamboo_plan_health` | Compteur vert / rouge sur une liste de plans | `plans` |
+| `bamboo_running` | Builds en cours et en file | `plans` \| `project` |
 
 Ajouter un provider : écrire une fonction décorée `@provider("nom")` dans
 `pyminidash/providers/` renvoyant une `list[Record]`, et l'importer depuis
