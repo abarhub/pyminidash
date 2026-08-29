@@ -47,6 +47,21 @@ Le token n'apparaît jamais dans les logs ni dans l'interface.
 Les colonnes optionnelles `build` / `mergeable` de `bitbucket_pr` déclenchent
 un appel d'API supplémentaire par PR.
 
+### Limites connues
+
+- `bitbucket_pr` / `bitbucket_pr_count` plafonnent à 200 PR par dépôt ; un
+  compteur saturé s'affiche `"N+"` ; quand `stale_days` est passé, les PR les
+  plus anciennes sont demandées en premier (le tableau reste trié du plus
+  récent au plus ancien).
+- un dépôt en échec dans une agrégation (`repos` / `project`) est ignoré avec
+  un log `WARNING` et le bloc s'affiche quand même ; si tous les dépôts
+  échouent, le bloc passe en erreur.
+- `bamboo_user_builds` filtre `user` par sous-chaîne dans le *texte* de la
+  raison du build (souvent le nom affiché, pas le login) — ajuster `user` si le
+  bloc est vide.
+- les blocs Bitbucket / Bamboo à large portée peuvent demander un `timeout`
+  explicite supérieur à 10 s.
+
 ## Providers intégrés
 
 | Provider | Usage | Paramètres |
@@ -58,13 +73,13 @@ un appel d'API supplémentaire par PR.
 | `jira_jql` | table | connexion + `jql: str`, `fields: list[str]`, `max_results: int = 50` |
 | `jira_jql_count` | table | connexion + `jql: str`, `warn_above: int = None`, `error_above: int = None` |
 | `jira_my_issues` | table | connexion + `fields: list[str] = None`, `max_results: int = 50` |
-| `bitbucket_pr` | Pull requests d'un dépôt / d'une liste / d'un projet | `repo` \| `repos` \| `project`, `state`, `role`, `fields`, `stale_days`, `max_results` |
-| `bitbucket_pr_count` | Compteur de PR (avec seuils) | idem portée + `state`, `role`, `warn_above`, `error_above` |
-| `bitbucket_my_review` | PR ouvertes où je suis reviewer (exige `user`) | portée + `fields`, `max_results` |
-| `bamboo_plan_status` | Dernier build de chaque plan | `plans`, `fields` |
-| `bamboo_user_builds` | Builds récents déclenchés par un utilisateur | `user` (défaut = `connection.user`), `max_results`, `scan` |
-| `bamboo_plan_health` | Compteur vert / rouge sur une liste de plans | `plans` |
-| `bamboo_running` | Builds en cours et en file | `plans` \| `project` |
+| `bitbucket_pr` | table | connexion + `repo` \| `repos` \| `project`, `state`, `role`, `fields`, `stale_days`, `max_results` |
+| `bitbucket_pr_count` | table | connexion + `repo` \| `repos` \| `project`, `state`, `role`, `warn_above`, `error_above` |
+| `bitbucket_my_review` | table | connexion + `repo` \| `repos` \| `project`, `fields`, `max_results` (exige `user`) |
+| `bamboo_plan_status` | table | connexion + `plans`, `fields` |
+| `bamboo_user_builds` | table | connexion + `user` (défaut = `connection.user`), `max_results`, `scan` |
+| `bamboo_plan_health` | table | connexion + `plans` |
+| `bamboo_running` | table | connexion + `plans` \| `project` |
 
 Ajouter un provider : écrire une fonction décorée `@provider("nom")` dans
 `pyminidash/providers/` renvoyant une `list[Record]`, et l'importer depuis

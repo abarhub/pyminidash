@@ -72,8 +72,10 @@ type = "table"
   provider   = "bitbucket_my_review"
   connection = "bitbucket"
   params     = { project = "ABC" }
+  timeout    = 40   # requête Bitbucket à portée projet : > 10 s légitimes
 
   [[groups.blocks]]
   title      = "Mes derniers builds"
   provider   = "bamboo_user_builds"
   connection = "bamboo"
+  timeout    = 40
