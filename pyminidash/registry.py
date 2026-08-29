@@ -42,9 +42,18 @@ def get_provider(name: str) -> ProviderDef:
         ) from None
 
 
-def validate_params(pdef: ProviderDef, params: dict) -> None:
+def validate_params(pdef: ProviderDef, params: dict, *,
+                    injected: frozenset[str] = frozenset()) -> None:
+    clash = injected & params.keys()
+    if clash:
+        k = sorted(clash)[0]
+        raise ValueError(
+            f"{pdef.name}: le paramètre '{k}' est injecté, à ne pas mettre dans params"
+        )
+    probe = {n: None for n in injected if n in pdef.signature.parameters}
+    probe.update(params)
     try:
-        pdef.signature.bind(**params)
+        pdef.signature.bind(**probe)
     except TypeError as exc:
         raise ValueError(
             f"{pdef.name}: {exc} ; signature attendue: {pdef.signature}"

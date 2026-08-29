@@ -50,7 +50,7 @@ async def block_fragment(request: Request, group_id: str, index: int) -> HTMLRes
     url = f"/groups/{group_id}/blocks/{index}"
     templates = request.app.state.templates
 
-    result = await run_block(block)
+    result = await run_block(block, request.app.state.connections)
     context = {
         "config": request.app.state.config,
         "group": group,

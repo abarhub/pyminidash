@@ -11,6 +11,8 @@ import uvicorn
 
 import pyminidash.providers  # noqa: F401 — enregistre les providers intégrés
 from pyminidash.config import ConfigError, load_config
+from pyminidash.connection import build_connections
+from pyminidash.secrets import SecretsError, load_secrets
 from pyminidash.web.app import create_app
 
 
@@ -21,6 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--open", action="store_true",
                         help="ouvrir le navigateur au démarrage")
+    parser.add_argument("--secrets", type=Path, default=None,
+                        help="fichier de secrets (défaut : secrets.toml à côté de --config)")
     return parser
 
 
@@ -28,11 +32,14 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     try:
         config = load_config(args.config)
-    except ConfigError as exc:
+        secrets_path = args.secrets or args.config.parent / "secrets.toml"
+        secrets = load_secrets(secrets_path)
+        connections = build_connections(config, secrets)
+    except (ConfigError, SecretsError) as exc:
         print(f"Erreur de configuration : {exc}", file=sys.stderr)
         raise SystemExit(2)
 
-    app = create_app(config)
+    app = create_app(config, connections)
 
     if args.open:
         url = f"http://{args.host}:{args.port}/"

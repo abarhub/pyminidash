@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from pyminidash.config import BlockConfig
+from pyminidash.errors import ProviderError
 from pyminidash.models import Record
 from pyminidash.registry import get_provider
 
@@ -43,12 +44,22 @@ def _check_records(result: object) -> str | None:
     return None
 
 
-async def run_block(block: BlockConfig) -> BlockResult:
+async def run_block(block: BlockConfig, connections: dict | None = None) -> BlockResult:
     pdef = get_provider(block.provider)
     timeout = block.timeout or DEFAULT_TIMEOUT
+
+    kwargs = dict(block.params)
+
     try:
+        if "connection" in pdef.signature.parameters and block.connection is not None:
+            conns = connections or {}
+            if block.connection not in conns:
+                raise ProviderError(
+                    f"connexion '{block.connection}' non initialisée"
+                )
+            kwargs["connection"] = conns[block.connection]
         result = await asyncio.wait_for(
-            asyncio.to_thread(pdef.func, **block.params), timeout
+            asyncio.to_thread(pdef.func, **kwargs), timeout
         )
     except (asyncio.TimeoutError, TimeoutError):
         # asyncio.wait_for annule le *future*, pas le thread : le worker est
@@ -58,6 +69,9 @@ async def run_block(block: BlockConfig) -> BlockResult:
         # provider faisant de l'I/O bloquante DOIT imposer son propre timeout.
         log.warning("bloc '%s' : délai dépassé (%gs)", block.provider, timeout)
         return BlockError("timeout", f"délai dépassé ({timeout:g} s)")
+    except ProviderError as exc:
+        log.warning("bloc '%s' : %s", block.provider, exc)
+        return BlockError("exception", str(exc))
     except Exception as exc:  # noqa: BLE001 — on veut tout attraper
         log.exception("bloc '%s' : exception du provider", block.provider)
         return BlockError("exception", f"{type(exc).__name__}: {exc}")

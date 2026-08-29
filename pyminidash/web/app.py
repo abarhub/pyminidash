@@ -16,12 +16,13 @@ TEMPLATES_DIR = _HERE / "templates"
 STATIC_DIR = _HERE / "static"
 
 
-def create_app(config: Config) -> FastAPI:
+def create_app(config: Config, connections: dict | None = None) -> FastAPI:
     app = FastAPI(title=config.app.title)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["format_field"] = format_value
 
     app.state.config = config
+    app.state.connections = connections or {}
     app.state.templates = templates
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

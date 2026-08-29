@@ -1,3 +1,7 @@
+# Secrets locaux
+secrets.toml
+config.toml
+
 # Brainstorming visual companion
 .superpowers/
 
