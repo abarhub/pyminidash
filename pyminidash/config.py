@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field as PField, ValidationError, model_validator
 
+import pyminidash.providers  # noqa: F401 — enregistre les providers intégrés avant validation
 from pyminidash.registry import get_provider, validate_params
 
 
