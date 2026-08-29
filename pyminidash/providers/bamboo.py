@@ -120,6 +120,53 @@ def bamboo_user_builds(connection, user=None, max_results=25,
     ]
 
 
+def _running_record(base_url, source, state_label):
+    s = source or {}
+    prk = _plan_key_of(s, s.get("planKey") or "")
+    label = s.get("planName") or (s.get("plan") or {}).get("shortName") or prk or "?"
+    prog = (s.get("progress") or {}).get("percentageCompletedPretty") or ""
+    return Record(
+        link("plan", "Plan", label, url=f"{base_url}/browse/{prk}",
+             role=FieldRole.TITLE),
+        status("state", "État", state_label, level=StatusLevel.NEUTRAL, summary=True),
+        number("number", "Build", s.get("buildNumber")),
+        datetime_("started", "Démarré", parse_iso(s.get("buildStartedTime"))),
+        text("progress", "Avancement", prog),
+    )
+
+
+@provider("bamboo_running")
+def bamboo_running(connection, plans=None, project=None) -> list[Record]:
+    given = [x for x in (plans, project) if x is not None]
+    if len(given) != 1:
+        raise ProviderError(
+            "bamboo_running : indiquez exactement un de plans / project"
+        )
+    if plans is not None and not plans:
+        raise ProviderError("bamboo_running : 'plans' ne doit pas être vide")
+
+    out: list[Record] = []
+    queue = get_json(connection, "/rest/api/latest/queue",
+                     params={"expand": "queuedBuilds"})
+    for qb in (queue.get("queuedBuilds") or {}).get("queuedBuild") or []:
+        out.append(_running_record(connection.base_url, qb, "En file"))
+
+    keys = plans
+    if project is not None:
+        proj = get_json(connection, f"/rest/api/latest/project/{project}",
+                        params={"expand": "plans"})
+        keys = [
+            p.get("key")
+            for p in (proj.get("plans") or {}).get("plan") or []
+            if p.get("key")
+        ]
+    for plan_key in keys or []:
+        result = _plan_result(connection, plan_key)
+        if result and result.get("lifeCycleState") == "InProgress":
+            out.append(_running_record(connection.base_url, result, "En cours"))
+    return out
+
+
 @provider("bamboo_plan_health")
 def bamboo_plan_health(connection, plans) -> list[Record]:
     if not plans:

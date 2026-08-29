@@ -6,7 +6,7 @@ from pyminidash.connection import Connection
 from pyminidash.errors import ProviderError
 from pyminidash.models import FieldRole, FieldType, StatusLevel
 from pyminidash.providers.bamboo import (
-    bamboo_plan_health, bamboo_plan_status, bamboo_user_builds,
+    bamboo_plan_health, bamboo_plan_status, bamboo_running, bamboo_user_builds,
 )
 
 CONN = Connection(name="bam", base_url="https://bam.example.com", token="PAT", user="jdupont")
@@ -130,3 +130,56 @@ def test_bamboo_plan_health_counts():
 def test_bamboo_plan_health_empty_raises():
     with pytest.raises(ProviderError, match="plans"):
         bamboo_plan_health(CONN, plans=[])
+
+
+@respx.mock
+def test_bamboo_running_queue_and_in_progress():
+    respx.get("https://bam.example.com/rest/api/latest/queue").mock(
+        return_value=httpx.Response(200, json={"queuedBuilds": {"queuedBuild": [
+            {"planName": "Plan Q", "planResultKey": {"key": "P-Q-9"}, "buildNumber": 9}
+        ]}}))
+    running = _result(key="P-A-5", num=5)
+    running["lifeCycleState"] = "InProgress"
+    running["buildState"] = "Unknown"
+    running["progress"] = {"percentageCompletedPretty": "62%"}
+    respx.get("https://bam.example.com/rest/api/latest/result/P-A/latest").mock(
+        return_value=_latest(running))
+    records = bamboo_running(CONN, plans=["P-A"])
+    labels = {r.fields[1].value for r in records}
+    assert labels == {"En file", "En cours"}
+    prog = [r.fields[4].value for r in records if r.fields[1].value == "En cours"][0]
+    assert prog == "62%"
+
+
+@respx.mock
+def test_bamboo_running_skips_finished_plans():
+    done = _result(key="P-A-5")
+    done["lifeCycleState"] = "Finished"
+    respx.get("https://bam.example.com/rest/api/latest/queue").mock(
+        return_value=httpx.Response(200, json={"queuedBuilds": {"queuedBuild": []}}))
+    respx.get("https://bam.example.com/rest/api/latest/result/P-A/latest").mock(
+        return_value=_latest(done))
+    assert bamboo_running(CONN, plans=["P-A"]) == []
+
+
+def test_bamboo_running_needs_exactly_one_target():
+    with pytest.raises(ProviderError, match="exactement un"):
+        bamboo_running(CONN)
+    with pytest.raises(ProviderError, match="exactement un"):
+        bamboo_running(CONN, plans=["P-A"], project="P")
+
+
+@respx.mock
+def test_bamboo_running_project_expands_plans():
+    respx.get("https://bam.example.com/rest/api/latest/queue").mock(
+        return_value=httpx.Response(200, json={"queuedBuilds": {"queuedBuild": []}}))
+    respx.get("https://bam.example.com/rest/api/latest/project/PROJ").mock(
+        return_value=httpx.Response(200, json={"plans": {"plan": [{"key": "PROJ-A"}, {"key": "PROJ-B"}]}}))
+    ip = _result(key="PROJ-A-1")
+    ip["lifeCycleState"] = "InProgress"
+    respx.get("https://bam.example.com/rest/api/latest/result/PROJ-A/latest").mock(
+        return_value=_latest(ip))
+    respx.get("https://bam.example.com/rest/api/latest/result/PROJ-B/latest").mock(
+        return_value=httpx.Response(404))
+    records = bamboo_running(CONN, project="PROJ")
+    assert len(records) == 1 and records[0].fields[0].value == "Mon Plan"
