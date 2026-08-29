@@ -1,7 +1,11 @@
 """Helpers partagés par les providers Atlassian (Jira/Bitbucket/Bamboo)."""
 from __future__ import annotations
 
+import html
+import re
 import ssl
+from collections.abc import Iterator
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -109,3 +113,53 @@ def count_record(label: str, count: int, *, warn_above: int | None = None,
     elif warn_above is not None and count > warn_above:
         level = StatusLevel.WARN
     return Record(status("count", label, str(count), level=level, summary=True))
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def strip_html(s) -> str:
+    if not s:
+        return ""
+    return html.unescape(_TAG_RE.sub("", str(s))).strip()
+
+
+def epoch_ms_to_dt(ms) -> datetime | None:
+    if ms is None:
+        return None
+    try:
+        return datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def parse_iso(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return value
+
+
+def paginate_v1(connection, path: str, *, params: dict | None = None,
+                hard_cap: int = 200, timeout: float = 15.0) -> Iterator[dict]:
+    query = dict(params or {})
+    start = 0
+    yielded = 0
+    while yielded < hard_cap:
+        query["start"] = start
+        query["limit"] = min(100, hard_cap - yielded)
+        page = get_json(connection, path, params=query, timeout=timeout)
+        values = page.get("values") or []
+        for value in values:
+            yield value
+            yielded += 1
+            if yielded >= hard_cap:
+                return
+        if page.get("isLastPage", True) or not values:
+            return
+        nxt = page.get("nextPageStart")
+        if nxt is None:
+            return
+        start = nxt
