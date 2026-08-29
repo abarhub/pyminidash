@@ -1,0 +1,18 @@
+{% import "_field.html" as fld %}
+{% include "_block_head.html" %}
+{% if table %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>{% for c in table.columns %}<th>{{ c.label }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      {% for row in table.rows %}
+      <tr>{% for f in row %}<td>{{ fld.field(f) }}</td>{% endfor %}</tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="empty">aucune donnée</p>
+{% endif %}

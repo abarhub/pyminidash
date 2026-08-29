@@ -1,0 +1,29 @@
+{% import "_field.html" as fld %}
+{% include "_block_head.html" %}
+{% if cards %}
+<div class="card-grid">
+  {% for c in cards %}
+  <article class="card">
+    <div class="card-top">
+      <strong>{{ c.title or "" }}</strong>
+      {% if c.badge %}{{ fld.field(c.badge) }}{% endif %}
+    </div>
+    <dl class="card-fields">
+      {% for f in c.summary_fields %}
+      <div><dt>{{ f.label }}</dt><dd>{{ fld.field(f) }}</dd></div>
+      {% endfor %}
+    </dl>
+    {% if c.hidden_fields %}
+    <dl class="card-fields more" hidden>
+      {% for f in c.hidden_fields %}
+      <div><dt>{{ f.label }}</dt><dd>{{ fld.field(f) }}</dd></div>
+      {% endfor %}
+    </dl>
+    <button type="button" class="card-toggle" data-count="{{ c.hidden_fields | length }}">afficher plus ({{ c.hidden_fields | length }})</button>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<p class="empty">aucune donnée</p>
+{% endif %}

@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from pyminidash.config import GroupConfig
+from pyminidash.runner import BlockError, run_block
+from pyminidash.web.render import to_cards, to_table
 
 router = APIRouter()
 
@@ -35,4 +37,42 @@ def group_page(request: Request, group_id: str) -> HTMLResponse:
             "group": group,
             "active_group_id": group_id,
         },
+    )
+
+
+@router.get("/groups/{group_id}/blocks/{index}", response_class=HTMLResponse)
+async def block_fragment(request: Request, group_id: str, index: int) -> HTMLResponse:
+    group = _get_group(request, group_id)
+    if index < 0 or index >= len(group.blocks):
+        raise HTTPException(status_code=404, detail="bloc inexistant")
+    block = group.blocks[index]
+    url = f"/groups/{group_id}/blocks/{index}"
+    templates = request.app.state.templates
+
+    result = await run_block(block)
+    context = {
+        "config": request.app.state.config,
+        "group": group,
+        "block": block,
+        "url": url,
+        "active_group_id": group_id,
+        "computed_at": None,
+    }
+
+    if isinstance(result, BlockError):
+        context["error"] = result
+        return templates.TemplateResponse(
+            request=request, name="_error.html", context=context
+        )
+
+    context["computed_at"] = result.computed_at
+    if group.type == "table":
+        context["table"] = to_table(result.records) if result.records else None
+        return templates.TemplateResponse(
+            request=request, name="_table.html", context=context
+        )
+
+    context["cards"] = to_cards(result.records)
+    return templates.TemplateResponse(
+        request=request, name="_cards.html", context=context
     )
