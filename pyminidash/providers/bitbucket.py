@@ -97,14 +97,14 @@ def _pr_field(name, pr):
 def _build_field(connection, pr):
     sha = (pr.get("fromRef") or {}).get("latestCommit")
     if not sha:
-        return status("build", "Build", "—", level=StatusLevel.NEUTRAL)
+        return status("build", "Build", "—", level=StatusLevel.NEUTRAL, summary=True)
     try:
         data = get_json(connection, f"/rest/build-status/1.0/commits/{sha}")
     except AtlassianError:
-        return status("build", "Build", "—", level=StatusLevel.NEUTRAL)
+        return status("build", "Build", "—", level=StatusLevel.NEUTRAL, summary=True)
     vals = data.get("values") or []
     if not vals:
-        return status("build", "Build", "—", level=StatusLevel.NEUTRAL)
+        return status("build", "Build", "—", level=StatusLevel.NEUTRAL, summary=True)
     st = vals[0].get("state") or "—"
     return status("build", "Build", st,
                   level=_BUILD_LEVEL.get(st, StatusLevel.NEUTRAL), summary=True)
@@ -118,14 +118,14 @@ def _mergeable_field(connection, pr, project, slug):
             f"/rest/api/1.0/projects/{project}/repos/{slug}/pull-requests/{pid}/merge",
         )
     except AtlassianError:
-        return status("mergeable", "Fusion", "?", level=StatusLevel.NEUTRAL)
+        return status("mergeable", "Fusion", "?", level=StatusLevel.NEUTRAL, summary=True)
     if data.get("conflicted"):
         return status("mergeable", "Fusion", "conflit",
                       level=StatusLevel.ERROR, summary=True)
     if data.get("canMerge"):
         return status("mergeable", "Fusion", "mergeable",
                       level=StatusLevel.OK, summary=True)
-    return status("mergeable", "Fusion", "bloquée", level=StatusLevel.NEUTRAL)
+    return status("mergeable", "Fusion", "bloquée", level=StatusLevel.NEUTRAL, summary=True)
 
 
 def _pr_record(connection, pr, fields, project, slug):

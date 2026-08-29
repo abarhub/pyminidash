@@ -136,3 +136,47 @@ def test_bitbucket_pr_stale_days_filter():
     respx.get(BASE).mock(return_value=_page([fresh, old]))
     records = bitbucket_pr(CONN, repo="ABC/r1", fields=["id"], stale_days=7)
     assert [r.fields[0].value for r in records] == ["#2"]
+
+
+@respx.mock
+def test_bitbucket_pr_build_column():
+    respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    respx.get("https://bb.example.com/rest/build-status/1.0/commits/abc123").mock(
+        return_value=httpx.Response(200, json={"values": [{"state": "FAILED"}]})
+    )
+    rec = bitbucket_pr(CONN, repo="ABC/r1", fields=["id", "build"])[0]
+    assert rec.fields[1].key == "build"
+    assert rec.fields[1].value == "FAILED"
+    assert rec.fields[1].level is StatusLevel.ERROR
+
+
+@respx.mock
+def test_bitbucket_pr_build_column_missing_is_dash():
+    pr = _pr(1)
+    pr["fromRef"].pop("latestCommit")
+    respx.get(BASE).mock(return_value=_page([pr]))
+    rec = bitbucket_pr(CONN, repo="ABC/r1", fields=["build"])[0]
+    assert rec.fields[0].value == "—"
+    assert rec.fields[0].level is StatusLevel.NEUTRAL
+
+
+@respx.mock
+def test_bitbucket_pr_mergeable_column():
+    respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    respx.get("https://bb.example.com/rest/api/1.0/projects/ABC/repos/r1/pull-requests/1/merge").mock(
+        return_value=httpx.Response(200, json={"canMerge": False, "conflicted": True})
+    )
+    rec = bitbucket_pr(CONN, repo="ABC/r1", fields=["id", "mergeable"])[0]
+    assert rec.fields[1].key == "mergeable"
+    assert rec.fields[1].value == "conflit"
+    assert rec.fields[1].level is StatusLevel.ERROR
+
+
+@respx.mock
+def test_bitbucket_pr_mergeable_api_error_is_question_mark():
+    respx.get(BASE).mock(return_value=_page([_pr(1)]))
+    respx.get("https://bb.example.com/rest/api/1.0/projects/ABC/repos/r1/pull-requests/1/merge").mock(
+        return_value=httpx.Response(500)
+    )
+    rec = bitbucket_pr(CONN, repo="ABC/r1", fields=["mergeable"])[0]
+    assert rec.fields[0].value == "?"
