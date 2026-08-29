@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ config.app.title }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+    <div class="brand">{{ config.app.title }}</div>
+    <ul>
+      {% for g in config.groups %}
+      <li>
+        <a href="/groups/{{ g.id }}"
+           class="{{ 'active' if g.id == active_group_id else '' }}">{{ g.title }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

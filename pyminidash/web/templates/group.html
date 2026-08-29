@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="group-head">
+  <h1>{{ group.title }}</h1>
+  <button id="recalc-all" type="button">↻ Tout recalculer</button>
+</header>
+<div class="blocks">
+  {% for block in group.blocks %}
+  {% set url = "/groups/" ~ group.id ~ "/blocks/" ~ loop.index0 %}
+  <section class="block">
+    <div class="block-body" hx-get="{{ url }}" hx-trigger="load, refresh"
+         hx-swap="innerHTML">
+      {% include "_loading.html" %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

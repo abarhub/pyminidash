@@ -1,0 +1,43 @@
+# Exemple de configuration pyminidash. Copier en config.toml et adapter.
+
+[app]
+title = "Mon dashboard"
+default_group = "system"
+
+[[groups]]
+id = "system"
+title = "Système"
+type = "table"
+
+  [[groups.blocks]]
+  title = "Espace disque"
+  provider = "disk_usage"
+  params = { paths = ["."] }
+
+  [[groups.blocks]]
+  title = "Processus gourmands"
+  provider = "top_processes"
+  params = { limit = 10 }
+
+[[groups]]
+id = "apis"
+title = "Monitoring APIs"
+type = "cards"
+
+  [[groups.blocks]]
+  title = "Endpoints"
+  provider = "http_check"
+  params = { urls = [
+    "https://jsonplaceholder.typicode.com/posts/1",
+    "https://jsonplaceholder.typicode.com/this-endpoint-does-not-exist",
+  ] }
+
+[[groups]]
+id = "data"
+title = "Données"
+type = "table"
+
+  [[groups.blocks]]
+  title = "Utilisateurs (jsonplaceholder)"
+  provider = "http_json"
+  params = { url = "https://jsonplaceholder.typicode.com/users", rows_path = "$", columns = ["name", "email", "company.name"] }

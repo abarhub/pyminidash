@@ -1,0 +1,9 @@
+<div class="block-head">
+  <div>
+    <strong>{{ block.title }}</strong>
+    <span class="meta">provider: {{ block.provider }}{% if computed_at %} · {{ computed_at.strftime('%H:%M:%S') }}{% endif %}</span>
+  </div>
+  <button type="button" class="recalc-one" title="Recalculer ce bloc"
+          hx-get="{{ url }}" hx-target="closest .block-body" hx-swap="innerHTML"
+          hx-indicator="closest .block-body">↻</button>
+</div>

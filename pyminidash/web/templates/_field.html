@@ -1,0 +1,9 @@
+{% macro field(f) -%}
+{%- if f.type.value == "status" -%}
+  <span class="status status-{{ f.level.value if f.level else 'neutral' }}">● {{ f | format_field }}</span>
+{%- elif f.type.value == "link" -%}
+  <a href="{{ f.url }}" target="_blank" rel="noopener">{{ f.value }}</a>
+{%- else -%}
+  {{ f | format_field }}
+{%- endif -%}
+{%- endmacro %}
