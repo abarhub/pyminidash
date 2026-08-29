@@ -5,7 +5,9 @@ import respx
 from pyminidash.connection import Connection
 from pyminidash.errors import ProviderError
 from pyminidash.models import FieldRole, FieldType, StatusLevel
-from pyminidash.providers.bamboo import bamboo_plan_status
+from pyminidash.providers.bamboo import (
+    bamboo_plan_health, bamboo_plan_status, bamboo_user_builds,
+)
 
 CONN = Connection(name="bam", base_url="https://bam.example.com", token="PAT", user="jdupont")
 
@@ -72,3 +74,59 @@ def test_bamboo_plan_status_optional_fields():
     rec = bamboo_plan_status(CONN, plans=["PROJ-PLAN"], fields=["plan", "trigger", "tests"])[0]
     assert rec.fields[1].value == "Manual run by Jean"
     assert rec.fields[2].value == "142 ✓ / 3 ✗"
+
+
+def _results_page(results):
+    return httpx.Response(200, json={"results": {"result": results}})
+
+
+@respx.mock
+def test_bamboo_user_builds_filters_by_reason():
+    mine = _result(key="P-A-1", num=1)
+    mine["buildReason"] = 'Manual run by <a>jdupont</a>'
+    other = _result(key="P-B-2", num=2)
+    other["buildReason"] = "Changes by someone else"
+    respx.get("https://bam.example.com/rest/api/latest/result").mock(
+        return_value=_results_page([mine, other]))
+    records = bamboo_user_builds(CONN)   # user par défaut = connection.user = "jdupont"
+    assert len(records) == 1
+    assert [x.key for x in records[0].fields] == ["plan", "state", "number", "finished", "duration"]
+    assert records[0].fields[2].value == 1
+
+
+def test_bamboo_user_builds_no_user_raises():
+    no_user = Connection(name="bam", base_url="https://bam.example.com", token="X")
+    with pytest.raises(ProviderError, match="user"):
+        bamboo_user_builds(no_user)
+
+
+@respx.mock
+def test_bamboo_user_builds_explicit_user_and_limit():
+    results = []
+    for i in range(5):
+        r = _result(key=f"P-X-{i}", num=i)
+        r["buildReason"] = "run by alice"
+        results.append(r)
+    respx.get("https://bam.example.com/rest/api/latest/result").mock(
+        return_value=_results_page(results))
+    records = bamboo_user_builds(CONN, user="alice", max_results=3)
+    assert len(records) == 3
+
+
+@respx.mock
+def test_bamboo_plan_health_counts():
+    respx.get("https://bam.example.com/rest/api/latest/result/P-A/latest").mock(
+        return_value=_latest(_result(state="Successful")))
+    respx.get("https://bam.example.com/rest/api/latest/result/P-B/latest").mock(
+        return_value=_latest(_result(state="Failed")))
+    respx.get("https://bam.example.com/rest/api/latest/result/P-C/latest").mock(
+        return_value=httpx.Response(404))
+    rec = bamboo_plan_health(CONN, plans=["P-A", "P-B", "P-C"])[0]
+    assert rec.fields[1].value == 1   # green
+    assert rec.fields[2].value == 1   # red
+    assert rec.fields[3].level is StatusLevel.ERROR
+
+
+def test_bamboo_plan_health_empty_raises():
+    with pytest.raises(ProviderError, match="plans"):
+        bamboo_plan_health(CONN, plans=[])

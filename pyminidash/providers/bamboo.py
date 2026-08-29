@@ -88,3 +88,54 @@ def bamboo_plan_status(connection, plans, fields=None) -> list[Record]:
             _plan_field(n, result, connection.base_url, plan_key) for n in fields
         ]))
     return out
+
+
+_USER_BUILDS_FIELDS = ["plan", "state", "number", "finished", "duration"]
+
+
+@provider("bamboo_user_builds")
+def bamboo_user_builds(connection, user=None, max_results=25,
+                       scan=100) -> list[Record]:
+    who = user or connection.user
+    if not who:
+        raise ProviderError(
+            f"connexion '{connection.name}' : renseignez user "
+            f"(ou passez user=...) pour bamboo_user_builds"
+        )
+    data = get_json(connection, "/rest/api/latest/result", params={
+        "expand": "results.result", "max-results": min(scan, 100),
+    })
+    results = (data.get("results") or {}).get("result") or []
+    low = who.lower()
+    kept = [
+        r for r in results
+        if low in strip_html(r.get("buildReason") or "").lower()
+    ][:max_results]
+    return [
+        Record(*[
+            _plan_field(n, r, connection.base_url, _plan_key_of(r, ""))
+            for n in _USER_BUILDS_FIELDS
+        ])
+        for r in kept
+    ]
+
+
+@provider("bamboo_plan_health")
+def bamboo_plan_health(connection, plans) -> list[Record]:
+    if not plans:
+        raise ProviderError("bamboo_plan_health : 'plans' ne doit pas être vide")
+    green = red = 0
+    for plan_key in plans:
+        st = (_plan_result(connection, plan_key) or {}).get("buildState")
+        if st == "Successful":
+            green += 1
+        elif st == "Failed":
+            red += 1
+    return [Record(
+        text("title", "Santé des plans", f"{green} vert / {red} rouge"),
+        number("green", "Au vert", green, summary=True),
+        number("red", "Au rouge", red, summary=True),
+        status("status", "Global", "KO" if red else "OK",
+               level=StatusLevel.ERROR if red else StatusLevel.OK,
+               role=FieldRole.BADGE, summary=True),
+    )]
