@@ -1,0 +1,202 @@
+"""Providers Bamboo : dernier build d'un plan, builds d'un utilisateur, santé, en cours."""
+from __future__ import annotations
+
+import logging
+
+from pyminidash.errors import ProviderError
+from pyminidash.models import (
+    FieldRole, Record, StatusLevel, datetime_, duration, link, number, status, text,
+)
+from pyminidash.providers._atlassian import (
+    NotFoundError, get_json, parse_iso, strip_html,
+)
+from pyminidash.registry import provider
+
+log = logging.getLogger("pyminidash.providers.bamboo")
+
+_STATE_SUCCESS = "Successful"
+_STATE_FAILED = "Failed"
+_STATE_LEVEL = {
+    _STATE_SUCCESS: StatusLevel.OK,
+    _STATE_FAILED: StatusLevel.ERROR,
+    "InProgress": StatusLevel.NEUTRAL,
+    "Unknown": StatusLevel.NEUTRAL,
+}
+_PLAN_STATUS_FIELDS = ["plan", "state", "number", "duration", "finished"]
+
+
+def _plan_result(connection, plan_key: str) -> dict | None:
+    try:
+        data = get_json(
+            connection, f"/rest/api/latest/result/{plan_key}/latest",
+            params={"expand": "results.result"},
+        )
+    except NotFoundError:
+        return None
+    if isinstance(data, dict):
+        inner = (data.get("results") or {}).get("result")
+        if isinstance(inner, list):
+            return inner[0] if inner else None
+    return data if isinstance(data, dict) else None
+
+
+def _plan_key_of(result: dict, fallback: str) -> str:
+    return (
+        (result.get("planResultKey") or {}).get("key")
+        or (result.get("plan") or {}).get("key")
+        or fallback
+    )
+
+
+def _plan_field(name, result, base_url, plan_key):
+    r = result or {}
+    if name == "plan":
+        prk = _plan_key_of(r, plan_key)
+        label = r.get("planName") or (r.get("plan") or {}).get("shortName") or plan_key
+        return link("plan", "Plan", label, url=f"{base_url}/browse/{prk}",
+                    role=FieldRole.TITLE)
+    if name == "state":
+        if not result:
+            return status("state", "État", "—", level=StatusLevel.NEUTRAL, summary=True)
+        st = r.get("buildState") or "Unknown"
+        return status("state", "État", st,
+                      level=_STATE_LEVEL.get(st, StatusLevel.NEUTRAL), summary=True)
+    if name == "number":
+        return number("number", "Build", r.get("buildNumber"))
+    if name == "duration":
+        secs = r.get("buildDurationInSeconds")
+        try:
+            val = int(secs) if secs not in (None, "") else None
+        except (ValueError, TypeError):
+            val = None
+        return duration("duration", "Durée", val)
+    if name == "finished":
+        return datetime_("finished", "Terminé", parse_iso(r.get("buildCompletedTime")))
+    if name == "trigger":
+        return text("trigger", "Déclencheur", strip_html(r.get("buildReason") or ""))
+    if name == "tests":
+        p = r.get("successfulTestCount") or 0
+        f = r.get("failedTestCount") or 0
+        return text("tests", "Tests", f"{p} ✓ / {f} ✗")
+    return text(name, name, "")
+
+
+@provider("bamboo_plan_status")
+def bamboo_plan_status(connection, plans, fields=None) -> list[Record]:
+    if not plans:
+        raise ProviderError("bamboo_plan_status : 'plans' ne doit pas être vide")
+    fields = fields or _PLAN_STATUS_FIELDS
+    out = []
+    for plan_key in plans:
+        result = _plan_result(connection, plan_key)
+        out.append(Record(*[
+            _plan_field(n, result, connection.base_url, plan_key) for n in fields
+        ]))
+    return out
+
+
+_USER_BUILDS_FIELDS = ["plan", "state", "number", "finished", "duration"]
+
+
+@provider("bamboo_user_builds")
+def bamboo_user_builds(connection, user=None, max_results=25,
+                       scan=100) -> list[Record]:
+    who = user or connection.user
+    if not who:
+        raise ProviderError(
+            f"connexion '{connection.name}' : renseignez user "
+            f"(ou passez user=...) pour bamboo_user_builds"
+        )
+    data = get_json(connection, "/rest/api/latest/result", params={
+        "expand": "results.result", "max-results": min(scan, 100),
+    })
+    results = (data.get("results") or {}).get("result") or []
+    low = who.lower()
+    kept = [
+        r for r in results
+        if low in strip_html(r.get("buildReason") or "").lower()
+    ][:max_results]
+    return [
+        Record(*[
+            _plan_field(n, r, connection.base_url, _plan_key_of(r, ""))
+            for n in _USER_BUILDS_FIELDS
+        ])
+        for r in kept
+    ]
+
+
+def _running_record(base_url, source, state_label):
+    s = source or {}
+    prk = _plan_key_of(s, s.get("planKey") or "")
+    label = s.get("planName") or (s.get("plan") or {}).get("shortName") or prk or "?"
+    prog = (s.get("progress") or {}).get("percentageCompletedPretty") or ""
+    return Record(
+        link("plan", "Plan", label, url=f"{base_url}/browse/{prk}",
+             role=FieldRole.TITLE),
+        status("state", "État", state_label, level=StatusLevel.NEUTRAL, summary=True),
+        number("number", "Build", s.get("buildNumber")),
+        datetime_("started", "Démarré", parse_iso(s.get("buildStartedTime"))),
+        text("progress", "Avancement", prog),
+    )
+
+
+@provider("bamboo_running")
+def bamboo_running(connection, plans=None, project=None) -> list[Record]:
+    given = [x for x in (plans, project) if x is not None]
+    if len(given) != 1:
+        raise ProviderError(
+            "bamboo_running : indiquez exactement un de plans / project"
+        )
+    if plans is not None and not plans:
+        raise ProviderError("bamboo_running : 'plans' ne doit pas être vide")
+
+    out: list[Record] = []
+    queue = get_json(connection, "/rest/api/latest/queue",
+                     params={"expand": "queuedBuilds"})
+    for qb in (queue.get("queuedBuilds") or {}).get("queuedBuild") or []:
+        out.append(_running_record(connection.base_url, qb, "En file"))
+
+    keys = plans
+    if project is not None:
+        proj = get_json(connection, f"/rest/api/latest/project/{project}",
+                        params={"expand": "plans"})
+        keys = [
+            p.get("key")
+            for p in (proj.get("plans") or {}).get("plan") or []
+            if p.get("key")
+        ]
+    for plan_key in keys or []:
+        result = _plan_result(connection, plan_key)
+        if result and result.get("lifeCycleState") == "InProgress":
+            out.append(_running_record(connection.base_url, result, "En cours"))
+    return out
+
+
+@provider("bamboo_plan_health")
+def bamboo_plan_health(connection, plans) -> list[Record]:
+    if not plans:
+        raise ProviderError("bamboo_plan_health : 'plans' ne doit pas être vide")
+    green = red = 0
+    for plan_key in plans:
+        st = (_plan_result(connection, plan_key) or {}).get("buildState")
+        if st == _STATE_SUCCESS:
+            green += 1
+        elif st == _STATE_FAILED:
+            red += 1
+    unknown = len(plans) - green - red
+    if red:
+        level, label = StatusLevel.ERROR, "KO"
+    elif unknown:
+        level, label = StatusLevel.NEUTRAL, "?"
+    else:
+        level, label = StatusLevel.OK, "OK"
+    title_txt = f"{green} vert / {red} rouge"
+    if unknown:
+        title_txt += f" / {unknown} ?"
+    return [Record(
+        text("title", "Santé des plans", title_txt),
+        number("green", "Au vert", green, summary=True),
+        number("red", "Au rouge", red, summary=True),
+        status("status", "Global", label, level=level, role=FieldRole.BADGE,
+               summary=True),
+    )]
