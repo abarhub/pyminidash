@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 from pyminidash.models import (
-    FieldRole, Record, StatusLevel, status, text, title,
+    Field, FieldRole, Record, StatusLevel, status, text, title,
 )
 from pyminidash.providers.localproj.discovery import ProjectDir
 from pyminidash.providers.localproj.gitinfo import GitInfo
@@ -100,6 +100,8 @@ def _maven_coords(m: MavenInfo | None) -> str:
         return ""
     if not m.readable:
         return "pom illisible"
+    if not any((m.group_id, m.artifact_id, m.version)) and not m.parent_gav:
+        return ""
     gav = ":".join(x or "?" for x in (m.group_id, m.artifact_id, m.version))
     return gav + (f" — parent {m.parent_gav}" if m.parent_gav else "")
 
@@ -129,7 +131,7 @@ def _frontend_build(m: MavenInfo | None) -> str:
     return " · ".join(bits)
 
 
-def _dirty_field(git: GitInfo | None):
+def _dirty_field(git: GitInfo | None) -> Field:
     if git is None:
         return status("dirty", "État", "", level=StatusLevel.NEUTRAL,
                       role=FieldRole.NORMAL, summary=True)
@@ -148,8 +150,11 @@ def _git_fields(git: GitInfo | None) -> dict[str, str]:
     last_commit = commit_detail = ""
     if git.commit_date is not None:
         last_commit = relative_date(git.commit_date, datetime.now(timezone.utc))
-        commit_detail = (f'{git.commit_hash_short} · '
-                         f'{git.commit_date:%Y-%m-%d %H:%M} · '
+    if git.commit_hash_short or git.commit_subject:
+        # Le segment date n'est présent que si la date a pu être parsée.
+        date_seg = (f'{git.commit_date:%Y-%m-%d %H:%M} · '
+                    if git.commit_date is not None else "")
+        commit_detail = (f'{git.commit_hash_short or ""} · {date_seg}'
                          f'"{git.commit_subject or ""}"')
     sync = ""
     if git.upstream and git.ahead is not None and git.behind is not None:
@@ -197,6 +202,11 @@ def to_record(project: ProjectDir, parsed: ParsedProject,
     by_key = {f.key: f for f in fields}
     picked = []
     for key in wanted:
+        if key not in by_key:
+            raise ValueError(
+                f"champ inconnu dans show : '{key}' ; "
+                f"connus : {', '.join(KNOWN_FIELDS)}"
+            )
         f = by_key[key]
         if f.role in (FieldRole.TITLE, FieldRole.BADGE):
             picked.append(f)

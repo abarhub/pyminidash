@@ -21,8 +21,9 @@ def parse_python(dir: Path) -> PythonInfo:
     pyproject = dir / "pyproject.toml"
     if pyproject.is_file():
         try:
-            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError):
+            data = tomllib.loads(pyproject.read_text(
+                encoding="utf-8", errors="replace"))
+        except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
             return PythonInfo(False, None, None)
         proj = data.get("project", {})
         if isinstance(proj, dict) and (proj.get("name") or proj.get("version")):
@@ -36,8 +37,8 @@ def parse_python(dir: Path) -> PythonInfo:
     setup = dir / "setup.py"
     if setup.is_file():
         try:
-            src = setup.read_text(encoding="utf-8")
-        except OSError:
+            src = setup.read_text(encoding="utf-8", errors="replace")
+        except (OSError, UnicodeDecodeError):
             return PythonInfo(False, None, None)
         n = _SETUP_NAME.search(src)
         v = _SETUP_VERSION.search(src)

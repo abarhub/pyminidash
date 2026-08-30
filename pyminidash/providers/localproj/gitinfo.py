@@ -1,6 +1,14 @@
-"""État Git d'un répertoire, obtenu en invoquant le binaire `git`."""
+"""État Git d'un répertoire, obtenu en invoquant le binaire `git`.
+
+`git_info` ne propage jamais d'exception : les erreurs d'invocation, de code
+retour ou de décodage sont capturées et se traduisent par `None`. La sortie de
+`git` est lue en UTF-8 avec `errors="replace"` (git émet toujours de l'UTF-8,
+alors que la console peut être en cp1252), donc jamais de `UnicodeDecodeError`.
+"""
 from __future__ import annotations
 
+import functools
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -10,8 +18,9 @@ from pathlib import Path
 _TIMEOUT = 5
 
 
+@functools.cache
 def git_on_path() -> bool:
-    # Vrai si le binaire `git` est présent dans le PATH.
+    # Vrai si le binaire `git` est présent dans le PATH (détecté une fois par run).
     return shutil.which("git") is not None
 
 
@@ -32,8 +41,10 @@ class GitInfo:
 def _run(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     # Chaque invocation porte un timeout ; `check=False` : on inspecte le code retour.
     return subprocess.run(
-        ("git", *args), cwd=path, capture_output=True, text=True,
+        ("git", *args), cwd=path, capture_output=True,
+        encoding="utf-8", errors="replace",
         check=False, timeout=_TIMEOUT,
+        env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
     )
 
 
@@ -64,10 +75,12 @@ def _parse_status(out: str) -> tuple[str, int, int | None, int | None, str | Non
 
 
 def git_info(path: Path) -> GitInfo | None:
-    # Renvoie None si `path` n'est pas dans un dépôt ou si `git` échoue ; ne lève jamais.
+    # Renvoie None si `path` n'est pas dans un dépôt, si `git` échoue, ou si sa
+    # sortie est indécodable ; ne lève jamais (UnicodeDecodeError = ValueError,
+    # donc capturé lui aussi).
     try:
         st = _run(path, "status", "--porcelain=v2", "--branch")
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         return None
     if st.returncode != 0:
         return None
@@ -86,7 +99,7 @@ def git_info(path: Path) -> GitInfo | None:
                 except ValueError:
                     d = None
             s = parts[2].strip() if len(parts) > 2 else None
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         pass
 
     branches: tuple[str, ...] = ()
@@ -103,7 +116,7 @@ def git_info(path: Path) -> GitInfo | None:
                 if len(cols) >= 2:
                     seen.setdefault(cols[0], cols[1])
             remotes = tuple(f"{n} {u}" for n, u in seen.items())
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         pass
 
     return GitInfo(

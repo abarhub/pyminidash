@@ -33,9 +33,13 @@ def test_returns_homogeneous_records(tree):
     assert all(r.keys() == KNOWN_FIELDS for r in recs)
 
 
-def test_sorted_by_name(tree):
-    recs = local_projects([str(tree)])
+def test_sorted_by_name(tmp_path):
+    # I2 : le tri porte sur le `name` RENDU (manifeste), pas le basename du dossier.
+    _touch(tmp_path / "aaa-dir" / "package.json", '{"name": "zzz-app"}')
+    _touch(tmp_path / "zzz-dir" / "package.json", '{"name": "aaa-app"}')
+    recs = local_projects([str(tmp_path)])
     names = [next(f.value for f in r.fields if f.key == "name") for r in recs]
+    assert names == ["aaa-app", "zzz-app"]
     assert names == sorted(names, key=str.lower)
 
 
@@ -81,6 +85,48 @@ def test_config_rejects_unknown_show_key(tmp_path):
           params = { roots = ["."], show = ["version", "bogus"] }
     """)
     with pytest.raises(ConfigError, match="bogus"):
+        load_config(p)
+
+
+def test_config_rejects_duplicate_show_keys(tmp_path):
+    p = _write_cfg(tmp_path, """
+        [[groups]]
+        id = "g"
+        title = "G"
+        type = "cards"
+          [[groups.blocks]]
+          provider = "local_projects"
+          params = { roots = ["."], show = ["version", "version"] }
+    """)
+    with pytest.raises(ConfigError, match="version"):
+        load_config(p)
+
+
+def test_config_rejects_empty_roots_list(tmp_path):
+    p = _write_cfg(tmp_path, """
+        [[groups]]
+        id = "g"
+        title = "G"
+        type = "cards"
+          [[groups.blocks]]
+          provider = "local_projects"
+          params = { roots = [] }
+    """)
+    with pytest.raises(ConfigError):
+        load_config(p)
+
+
+def test_config_rejects_roots_bare_string(tmp_path):
+    p = _write_cfg(tmp_path, """
+        [[groups]]
+        id = "g"
+        title = "G"
+        type = "cards"
+          [[groups.blocks]]
+          provider = "local_projects"
+          params = { roots = "D:/x" }
+    """)
+    with pytest.raises(ConfigError):
         load_config(p)
 
 

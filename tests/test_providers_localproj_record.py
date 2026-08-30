@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from pyminidash.models import FieldRole
 from pyminidash.providers.localproj.discovery import ProjectDir
 from pyminidash.providers.localproj.gitinfo import GitInfo
@@ -92,6 +94,30 @@ def test_show_filters_and_orders():
 def test_show_keeps_name_if_listed():
     rec = to_record(_proj(), _EMPTY, None, ["branch", "name"])
     assert rec.keys() == ("branch", "name")
+
+
+def test_show_unknown_key_raises_valueerror():
+    # I1 : clé inconnue dans show -> ValueError explicite, pas KeyError nu.
+    with pytest.raises(ValueError, match="bogus"):
+        to_record(_proj(), _EMPTY, None, show=["version", "bogus"])
+
+
+def test_commit_detail_kept_when_date_unparsable():
+    # Minor record : date illisible mais hash + sujet présents -> commit_detail émis.
+    g = _git(commit_date=None)
+    by = {f.key: f for f in to_record(_proj(), _EMPTY, g, None).fields}
+    assert by["last_commit"].value == ""
+    assert "a1b2c3d" in by["commit_detail"].value
+    assert "Fix null check" in by["commit_detail"].value
+
+
+def test_maven_coords_empty_when_all_none_on_readable_pom():
+    # Minor record : pom lisible mais g/a/v tous None -> "" (pas "?:?:?").
+    m = _maven(readable=True, group_id=None, artifact_id=None, version=None,
+               name=None, parent_gav=None)
+    by = {f.key: f for f in to_record(_proj(), ParsedProject(m, None, None, None, None),
+                                      None, None).fields}
+    assert by["maven_coords"].value == ""
 
 
 def test_relative_date_buckets():

@@ -33,10 +33,11 @@ def _dep(data: dict, pkg: str) -> str | None:
 
 def parse_node(dir: Path) -> NodeInfo:
     try:
-        data = json.loads((dir / "package.json").read_text(encoding="utf-8"))
+        data = json.loads((dir / "package.json").read_text(
+            encoding="utf-8", errors="replace"))
         if not isinstance(data, dict):
             raise ValueError
-    except (OSError, ValueError):
+    except (OSError, ValueError, UnicodeDecodeError):
         return NodeInfo(False, None, None, None, None)
     name = data.get("name") if isinstance(data.get("name"), str) else None
     version = data.get("version") if isinstance(data.get("version"), str) else None

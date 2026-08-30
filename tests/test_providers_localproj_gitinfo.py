@@ -74,3 +74,14 @@ def test_ahead_behind_vs_upstream(repo, tmp_path):
 
 def test_not_a_repo_returns_none(tmp_path):
     assert git_info(tmp_path) is None
+
+
+def test_commit_subject_utf8_non_ascii(repo):
+    # C1 : git émet de l'UTF-8 ; le décodage ne doit pas planter sur une
+    # console française (cp1252) et le texte doit être exact.
+    (repo / "f.txt").write_text("b", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "Café Œuvre €")
+    info = git_info(repo)
+    assert info is not None
+    assert info.commit_subject == "Café Œuvre €"

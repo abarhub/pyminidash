@@ -77,7 +77,10 @@ def _interpolate(value: str | None, props: dict[str, str]) -> str | None:
 
 
 def _all_deps(root: ET.Element) -> list[ET.Element]:
-    return root.findall(".//{*}dependencies/{*}dependency")
+    # Ancré au niveau projet : <dependencies> + <dependencyManagement>/<dependencies>
+    # uniquement. Exclut plugin/pluginManagement/profiles (faux positifs de version).
+    return (root.findall("{*}dependencies/{*}dependency")
+            + root.findall("{*}dependencyManagement/{*}dependencies/{*}dependency"))
 
 
 def _plugins(root: ET.Element) -> list[ET.Element]:
@@ -157,6 +160,7 @@ def parse_maven(project_dir: Path, libs: list[str]) -> MavenInfo:
                      _txt(root, "version") or _txt(parent_el, "version") or "")
     props.setdefault("project.groupId",
                      _txt(root, "groupId") or _txt(parent_el, "groupId") or "")
+    props.setdefault("project.artifactId", _txt(root, "artifactId") or "")
 
     group_id = _txt(root, "groupId") or _txt(parent_el, "groupId")
     version = _txt(root, "version") or _txt(parent_el, "version")
@@ -166,12 +170,18 @@ def parse_maven(project_dir: Path, libs: list[str]) -> MavenInfo:
             _txt(parent_el, "groupId"), _txt(parent_el, "artifactId"),
             _txt(parent_el, "version")))
 
-    found_libs: list[tuple[str, str]] = []
+    # Dédup par artifactId : une version concrète interpolée prime sur "managed".
+    found_libs_map: dict[str, str] = {}
     for dep in _all_deps(root):
         aid = _txt(dep, "artifactId")
-        if aid in libs:
-            raw = _txt(dep, "version")
-            found_libs.append((aid, _interpolate(raw, props) or "managed"))
+        if aid not in libs:
+            continue
+        ver = _interpolate(_txt(dep, "version"), props) or "managed"
+        if aid not in found_libs_map or (
+            found_libs_map[aid] == "managed" and ver != "managed"
+        ):
+            found_libs_map[aid] = ver
+    found_libs = [(a, found_libs_map[a]) for a in found_libs_map]
 
     fe_version, fe_node, fe_npm = _frontend(root)
     ang, ang_mat = _angular_subscan(project_dir)

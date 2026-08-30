@@ -1,12 +1,15 @@
 """Découverte des projets sous une liste de répertoires racine."""
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
 from pyminidash.errors import ProviderError
+
+log = logging.getLogger("pyminidash.localproj")
 
 ALWAYS_IGNORE: frozenset[str] = frozenset({
     "target", "node_modules", "node", ".venv", ".venv2", ".env", ".git",
@@ -54,13 +57,16 @@ def _walk(root: Path, ignore: list[str], max_depth: int,
         if depth >= max_depth:
             return
         try:
-            entries = sorted(os.scandir(d), key=lambda e: e.name)
-        except OSError:
+            with os.scandir(d) as it:
+                entries = sorted(it, key=lambda e: e.name)
+        except OSError as exc:
+            log.warning("scan : %s ignoré (%s)", d, exc)
             return
         for entry in entries:
             try:
                 is_dir = entry.is_dir(follow_symlinks=False)
-            except OSError:
+            except OSError as exc:
+                log.warning("scan : %s ignoré (%s)", entry.path, exc)
                 continue
             if not is_dir or entry.name in ALWAYS_IGNORE:
                 continue

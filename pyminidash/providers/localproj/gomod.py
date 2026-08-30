@@ -15,8 +15,9 @@ class GoInfo:
 
 def parse_gomod(dir: Path) -> GoInfo:
     try:
-        lines = (dir / "go.mod").read_text(encoding="utf-8").splitlines()
-    except OSError:
+        lines = (dir / "go.mod").read_text(
+            encoding="utf-8", errors="replace").splitlines()
+    except (OSError, UnicodeDecodeError):
         return GoInfo(False, None, None, None)
     module = go_version = None
     for raw in lines:

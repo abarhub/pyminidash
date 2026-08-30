@@ -168,6 +168,44 @@ def test_angular_subscan(tmp_path):
     assert parse_maven(tmp_path, []).angular_version == "17.1.0"
 
 
+def test_libs_ignores_plugin_and_profile_deps_and_dedups(tmp_path):
+    # C3 : _all_deps ne doit matcher QUE <dependencies> projet + <dependencyManagement>,
+    # pas plugin/profile ; dédup par artifactId, version concrète > "managed".
+    _pom(tmp_path, """
+      <artifactId>a</artifactId><version>1</version>
+      <build><plugins><plugin>
+        <artifactId>some-plugin</artifactId>
+        <dependencies><dependency>
+          <groupId>x</groupId><artifactId>thelib</artifactId><version>9.9.9</version>
+        </dependency></dependencies>
+      </plugin></plugins></build>
+      <profiles><profile><id>p</id><dependencies><dependency>
+        <groupId>x</groupId><artifactId>thelib</artifactId><version>8.8.8</version>
+      </dependency></dependencies></profile></profiles>
+      <dependencies><dependency>
+        <groupId>x</groupId><artifactId>thelib</artifactId>
+      </dependency></dependencies>
+      <dependencyManagement><dependencies><dependency>
+        <groupId>x</groupId><artifactId>thelib</artifactId><version>1.2.3</version>
+      </dependency></dependencies></dependencyManagement>
+    """)
+    info = parse_maven(tmp_path, ["thelib"])
+    assert info.libs == (("thelib", "1.2.3"),)
+
+
+def test_seeds_project_artifactId_property(tmp_path):
+    # Minor maven : builtin project.artifactId disponible pour l'interpolation.
+    _pom(tmp_path, """
+      <artifactId>myart</artifactId><version>1</version>
+      <dependencies><dependency>
+        <groupId>x</groupId><artifactId>guava</artifactId>
+        <version>${project.artifactId}</version>
+      </dependency></dependencies>
+    """)
+    info = parse_maven(tmp_path, ["guava"])
+    assert info.libs == (("guava", "myart"),)
+
+
 def test_malformed_pom(tmp_path):
     (tmp_path / "pom.xml").write_text("<project><broken", encoding="utf-8")
     info = parse_maven(tmp_path, [])

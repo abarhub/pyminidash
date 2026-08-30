@@ -84,3 +84,48 @@ def test_parse_python_venv_only(tmp_path):
     info = parse_python(tmp_path)
     assert info.name == tmp_path.name
     assert info.version is None
+
+
+# --- C2 : fichiers non-UTF-8 -> les parsers ne lèvent jamais (spec §5) ---
+
+def test_parse_gomod_latin1_does_not_raise(tmp_path):
+    (tmp_path / "go.mod").write_bytes(
+        "module ex.com/caf\xe9\n\ngo 1.22\n".encode("latin-1"))
+    info = parse_gomod(tmp_path)  # ne doit pas lever
+    assert info.go_version == "1.22"
+
+
+def test_parse_python_setup_latin1_does_not_raise(tmp_path):
+    (tmp_path / "setup.py").write_bytes(
+        "# accent \xe9\nname='pkg'\nversion='1.0'\n".encode("latin-1"))
+    info = parse_python(tmp_path)  # ne doit pas lever
+    assert info.readable is True
+
+
+def test_parse_python_pyproject_latin1_does_not_raise(tmp_path):
+    (tmp_path / "pyproject.toml").write_bytes(
+        "# accent \xe9\n[project]\nname = \"pkg\"\nversion = \"1.0\"\n".encode("latin-1"))
+    info = parse_python(tmp_path)  # ne doit pas lever
+    assert info.readable is True
+
+
+def test_parse_cargo_latin1_does_not_raise(tmp_path):
+    (tmp_path / "Cargo.toml").write_bytes(
+        "# accent \xe9\n[package]\nname = \"c\"\nversion = \"0.1.0\"\n".encode("latin-1"))
+    info = parse_cargo(tmp_path)  # ne doit pas lever
+    assert info.readable is True
+
+
+def test_parse_cargo_version_workspace_inheritance(tmp_path):
+    # Minor cargo : version.workspace = true -> dict, doit devenir None.
+    _w(tmp_path / "Cargo.toml", """
+      [package]
+      name = "c"
+      version.workspace = true
+      edition.workspace = true
+    """)
+    info = parse_cargo(tmp_path)
+    assert info.readable is True
+    assert info.version is None
+    assert info.edition is None
+    assert info.name == "c"
