@@ -41,17 +41,13 @@ class Connection:
 
 def build_connections(config: Config, secrets: dict[str, str]) -> dict[str, Connection]:
     out: dict[str, Connection] = {}
+    disabled: list[str] = []
     for name, cc in config.connections.items():
-        if cc.token not in secrets:
-            avail = ", ".join(sorted(secrets)) or "(aucune)"
-            raise ConfigError(
-                f"connexion '{name}' : la clé de token déclarée est absente de "
-                f"secrets.toml (clés disponibles : {avail})"
-            )
-        if not secrets[cc.token].strip():
-            raise ConfigError(
-                f"connexion '{name}' : le token '{cc.token}' est vide dans secrets.toml"
-            )
+        # Token absent ou vide → connexion désactivée (pas d'erreur fatale) : le
+        # serveur démarre, les blocs qui l'utilisent s'afficheront en erreur.
+        if cc.token not in secrets or not secrets[cc.token].strip():
+            disabled.append(name)
+            continue
         if isinstance(cc.verify, str) and not Path(cc.verify).is_file():
             raise ConfigError(
                 f"connexion '{name}' : fichier CA '{cc.verify}' introuvable"
@@ -67,5 +63,11 @@ def build_connections(config: Config, secrets: dict[str, str]) -> dict[str, Conn
             token=secrets[cc.token],
             verify=cc.verify,
             user=cc.user,
+        )
+    if disabled:
+        log.warning(
+            "connexions désactivées (token absent/vide dans secrets.toml) : %s "
+            "— les blocs qui les utilisent s'afficheront en erreur",
+            ", ".join(disabled),
         )
     return out

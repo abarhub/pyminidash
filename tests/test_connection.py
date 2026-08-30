@@ -15,27 +15,57 @@ def _config(**conn):
     })
 
 
+def _config_multi():
+    return Config.model_validate({
+        "connections": {
+            "jira": {"base_url": "https://jira.example.com", "token": "jira"},
+            "bamboo": {"base_url": "https://bamboo.example.com", "token": "bamboo"},
+        },
+        "groups": [{"id": "g", "title": "G", "type": "table",
+                    "blocks": [{"provider": "disk_usage", "params": {"paths": ["."]}}]}],
+    })
+
+
 def test_build_resolves_token():
     conns = build_connections(_config(), {"jira": "SECRET-PAT"})
     assert conns["jira"].token == "SECRET-PAT"
     assert conns["jira"].base_url == "https://jira.example.com"
 
 
-def test_missing_token_raises():
-    with pytest.raises(ConfigError, match="absente de secrets.toml"):
-        build_connections(_config(), {})
+def test_missing_token_disables_connection(caplog):
+    # token absent de secrets.toml → connexion ignorée, serveur démarre quand même
+    with caplog.at_level(logging.WARNING, logger="pyminidash.connection"):
+        conns = build_connections(_config(), {})
+    assert "jira" not in conns
+    assert any(
+        "jira" in r.getMessage() and r.levelno == logging.WARNING
+        for r in caplog.records
+    )
 
 
-def test_missing_token_error_does_not_echo_field_value():
-    # le message ne doit pas ré-afficher une valeur collée dans le champ token
-    with pytest.raises(ConfigError) as exc:
-        build_connections(_config(), {"autre": "x"})
-    assert "clés disponibles : autre" in str(exc.value)
+def test_empty_token_value_disables_connection(caplog):
+    with caplog.at_level(logging.WARNING, logger="pyminidash.connection"):
+        conns = build_connections(_config(), {"jira": "   "})
+    assert "jira" not in conns
+    assert any("jira" in r.getMessage() for r in caplog.records)
 
 
-def test_empty_token_value_raises():
-    with pytest.raises(ConfigError, match="vide"):
-        build_connections(_config(), {"jira": "   "})
+def test_partial_secrets_build_available_connections(caplog):
+    # une connexion renseignée, l'autre non → seule la renseignée est construite
+    with caplog.at_level(logging.WARNING, logger="pyminidash.connection"):
+        conns = build_connections(_config_multi(), {"jira": "PAT"})
+    assert set(conns) == {"jira"}
+    assert conns["jira"].token == "PAT"
+    assert any("bamboo" in r.getMessage() for r in caplog.records)
+
+
+def test_no_missing_token_no_warning(caplog):
+    with caplog.at_level(logging.WARNING, logger="pyminidash.connection"):
+        build_connections(_config_multi(), {"jira": "a", "bamboo": "b"})
+    assert not any(
+        "désactivée" in r.getMessage() or "token absent" in r.getMessage()
+        for r in caplog.records
+    )
 
 
 def test_verify_false_logs_warning(caplog):

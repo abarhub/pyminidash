@@ -46,7 +46,15 @@ def test_parser_has_secrets_option():
     assert build_parser().parse_args([]).secrets is None
 
 
-def test_main_exits_2_on_missing_token(tmp_path, capsys):
+def test_main_starts_with_missing_token(tmp_path, monkeypatch):
+    # token 'jira' absent de secrets.toml → connexion désactivée, le serveur
+    # démarre quand même ; le bloc jira s'affichera en erreur au runtime.
+    captured = {}
+    monkeypatch.setattr("pyminidash.__main__.uvicorn.run", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "pyminidash.__main__.create_app",
+        lambda config, connections: captured.setdefault("conns", connections) or object(),
+    )
     cfg = tmp_path / "c.toml"
     cfg.write_text(
         '[connections.jira]\nbase_url = "https://jira.example.com"\ntoken = "jira"\n'
@@ -54,12 +62,8 @@ def test_main_exits_2_on_missing_token(tmp_path, capsys):
         '  [[groups.blocks]]\n  provider = "jira_my_issues"\n  connection = "jira"\n',
         encoding="utf-8",
     )
-    # pas de secrets.toml à côté → token 'jira' absent
-    with pytest.raises(SystemExit) as exc:
-        main(["--config", str(cfg)])
-    assert exc.value.code == 2
-    err = capsys.readouterr().err
-    assert "jira" in err and "PAT" not in err
+    main(["--config", str(cfg)])   # ne lève pas
+    assert captured["conns"] == {}
 
 
 def test_main_builds_connections(tmp_path, monkeypatch):

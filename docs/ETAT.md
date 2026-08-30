@@ -26,6 +26,7 @@ pyminidash/
   config.py       modèles Pydantic + load_config() ; [connections.*] ; ConfigError bloque le démarrage
   secrets.py      load_secrets() lit secrets.toml (plat, git-ignoré) ; SecretsError
   connection.py   Connection (repr masque le token) + .client() httpx authentifié ; build_connections()
+                  (token manquant/vide → connexion désactivée + WARNING, pas d'erreur fatale)
   errors.py       ProviderError (message affiché tel quel par le runner, sans préfixe de type)
   models.py       Field / Record + helpers (text, status, link, datetime_, number, bytes_, duration, title...)
   format.py       format_value(field) -> str (bytes humanisés, %, durées, dates...)
@@ -100,8 +101,11 @@ bamboo    = "..."
 ```
 
 Le token n'apparaît jamais dans un log / message / rendu. Validation au démarrage :
-token absent/vide, CA introuvable, connexion inconnue, provider inexistant → `ConfigError`,
-le serveur ne démarre pas.
+CA introuvable, connexion inconnue, provider inexistant → `ConfigError`, le serveur ne
+démarre pas. **Token absent/vide dans `secrets.toml` → la connexion est désactivée**
+(WARNING au démarrage) et le serveur démarre quand même ; les blocs qui l'utilisent
+s'affichent en erreur par card (`connexion '...' non initialisée`). Permet de lancer le
+dashboard avec seulement les providers système / HTTP / `local_projects`.
 
 ## Historique (3 PR mergées dans main)
 
