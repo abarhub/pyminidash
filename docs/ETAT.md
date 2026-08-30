@@ -1,6 +1,6 @@
 # pyminidash — état du projet (handoff)
 
-Dernière mise à jour : 2026-08-29. Branche `main` @ `f3ee59f`. 171 tests + 1 skip.
+Dernière mise à jour : 2026-08-30. Branche `main` @ `a3d6bcc`. 241 tests + 1 skip.
 
 ## Ce que c'est
 
