@@ -57,6 +57,8 @@ sans ouvrir chaque dépôt à la main.
 [[groups.blocks]]
 provider = "local_projects"
 title    = "Projets locaux"
+timeout  = 60          # champ de premier niveau du bloc, PAS dans params.
+                       # Défaut runner = 10 s, trop court pour ~300 projets.
 params   = {
   roots     = ["D:/projet", "D:/work"],
   ignore    = ["archive-*", "sandbox"],
@@ -65,6 +67,11 @@ params   = {
   # show    = ["name", "version", "branch", "dirty", "stack"],
 }
 ```
+
+Le timeout par bloc est déjà géré par `runner.py`
+(`timeout = block.timeout or DEFAULT_TIMEOUT`, sans plafond) — **aucune
+modification du runner**. La doc (`config.example.toml`, `README.md`)
+recommande `timeout = 60` pour ce provider.
 
 | Param | Type | Défaut | Rôle |
 |---|---|---|---|
@@ -178,9 +185,15 @@ def git_info(path: Path) -> GitInfo | None
 | branches locales | `git for-each-ref --format=%(refname:short) refs/heads` | liste |
 | remotes | `git remote -v` | paires `nom url` dédupliquées |
 
-- 4 invocations `git` par projet. Budget : ~40 projets tiennent largement sous
-  le timeout 10 s du runner. Si le scan est plus gros, `max_depth` / `ignore`
-  sont les leviers de l'utilisateur.
+- 4 invocations `git` par projet. Elles sont exécutées **en parallèle entre
+  projets** par l'orchestrateur (`ThreadPoolExecutor(max_workers=8)`, cf. §10) :
+  les subprocess libèrent le GIL, ~300 projets passent sous le `timeout = 60`
+  recommandé. `max_depth` / `ignore` restent les leviers si le scan est
+  gigantesque.
+- Au timeout, `runner.py` abandonne le thread sans le tuer (comportement
+  documenté). Chaque appel `git` porte `timeout=5` et le scan filesystem est
+  fini → le worker abandonné se termine seul, pas de fuite ni de process `git`
+  zombie durable.
 - `# branch.upstream` absent → `upstream = None`, `ahead/behind = None` → champ
   `sync` vide.
 - Aucune connexion réseau : `ahead/behind` reflète l'état du dernier `fetch`.
@@ -364,7 +377,7 @@ else:
 
 ```
 pyminidash/providers/localproj/
-  __init__.py    @provider("local_projects", validate=_validate_cfg) ; orchestration ; _KNOWN_FIELDS
+  __init__.py    @provider(..., validate=_validate_cfg) ; orchestration (ThreadPoolExecutor) ; _KNOWN_FIELDS
   discovery.py   ProjectDir, find_projects
   gitinfo.py     GitInfo, git_info
   maven.py       MavenInfo, parse_maven
@@ -389,23 +402,34 @@ Modifications hors sous-package :
 ## 10. Orchestration du provider
 
 ```python
+_GIT_WORKERS = 8
+
 @provider("local_projects", validate=_validate_cfg)
 def local_projects(roots, ignore=None, max_depth=5, libs=None, show=None) -> list[Record]:
     ignore = ignore or []
     libs = libs if libs is not None else ["guava", "commons-lang3"]
     projects = find_projects(roots, ignore, max_depth)   # ProviderError si root KO
-    git_available = _git_on_path()
-    records = []
-    for proj in projects:
-        parsed = _parse_all(proj, libs)          # dict token -> info ; ne lève pas
-        git = git_info(proj.path) if git_available else None
-        records.append(to_record(proj, parsed, git, show))
-    return records
+
+    parsed = [_parse_all(p, libs) for p in projects]     # séquentiel, cheap ; ne lève pas
+
+    if _git_on_path():
+        with ThreadPoolExecutor(max_workers=_GIT_WORKERS) as pool:
+            gits = list(pool.map(lambda p: git_info(p.path), projects))
+    else:
+        gits = [None] * len(projects)
+
+    return [to_record(proj, pr, git, show)
+            for proj, pr, git in zip(projects, parsed, gits)]
 ```
 
+- Appels `git` parallélisés entre projets (I/O-bound, GIL libéré par les
+  subprocess). Parsing de fichiers laissé séquentiel (rapide, pas d'I/O
+  bloquante longue).
 - Échec de parsing d'**un** projet : capturé dans `_parse_all` / `to_record`,
   record partiel + note ; jamais de bloc en erreur pour un seul projet cassé.
-- Ordre déterministe (tri de `find_projects`).
+- `git_info` ne lève pas (retourne `None` en cas de souci) → `pool.map` ne
+  propage rien.
+- Ordre déterministe : `zip` sur l'ordre trié de `find_projects`.
 
 ## 11. Plan de tests
 
@@ -420,7 +444,7 @@ def local_projects(roots, ignore=None, max_depth=5, libs=None, show=None) -> lis
 | `node` / `cargo` / `gomod` / `python` | fixture minimale : cas nominal + fichier malformé ; workspace Cargo ; `.venv` seul |
 | `gitinfo` | vrais dépôts créés en `tmp_path` via `subprocess` (init, commit, branche, fichier sale, `remote add`, `branch --set-upstream-to`) → `branch`, `dirty_count`, `ahead/behind`, `upstream`, `commit_*`, `branches`, `remotes` ; dossier hors dépôt → `None` ; `@pytest.mark.skipif` si `git` absent du PATH |
 | `record` | Info fabriquées → jeu **et** ordre des 16 champs ; composites `stack` / `maven_coords` / `frontend_build` / `modules` / `libs` ; buckets de `_relative_date` ; application de `show` (filtrage + ordre + `name` forcé) |
-| provider (intégration) | arbre `tmp_path` avec 2–3 projets hétérogènes → records **homogènes** (mêmes clés) ; `show` restreint bien les colonnes ; tri déterministe |
+| provider (intégration) | arbre `tmp_path` avec 2–3 projets hétérogènes → records **homogènes** (mêmes clés) ; `show` restreint bien les colonnes ; tri déterministe ; ordre `parsed`/`gits`/`projects` bien aligné après le `ThreadPoolExecutor` ; `git` absent → tous champs Git vides |
 | `config` | bloc avec `show` contenant une clé inconnue → `ConfigError` localisée ; `roots` manquant → `ConfigError` ; provider existant sans `validate` inchangé |
 | `render` | `to_cards` retire les champs repliés vides ; garde les champs résumé vides ; `to_table` inchangé |
 
@@ -429,9 +453,13 @@ warnings inchangés.
 
 ## 12. Risques / points de vigilance
 
-- **Perf sur gros arbres** : 4 `git` + N lectures de fichiers par projet.
-  Atténué par `max_depth`, `ignore`, l'arrêt au 1er marqueur, et le timeout 10 s
-  du runner (qui dégrade proprement en `BlockError`).
+- **Perf sur gros arbres (~300 projets)** : 4 `git` + N lectures de fichiers par
+  projet. Atténué par : `timeout = 60` recommandé au bloc, parallélisation des
+  appels `git` (`max_workers=8`), `max_depth`, `ignore`, arrêt au 1er marqueur.
+  Dépassement éventuel → `BlockError("timeout")` propre, thread abandonné qui
+  se termine seul. Test de charge non prévu (pas d'environnement à 300 repos en
+  CI) ; à valider par l'utilisateur sur une vraie machine et ajuster
+  `max_workers` si besoin.
 - **Interpolation Maven incomplète** : BOM importés, profils actifs, héritage
   au-delà de 3 niveaux ou parent hors disque → certaines versions resteront en
   `${...}`. Acceptable : analyse statique best-effort, jamais d'exception.
