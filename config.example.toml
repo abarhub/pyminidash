@@ -79,3 +79,21 @@ type = "table"
   provider   = "bamboo_user_builds"
   connection = "bamboo"
   timeout    = 40
+
+[[groups]]
+id = "projets"
+title = "Projets locaux"
+type = "cards"
+
+  [[groups.blocks]]
+  title    = "Tous les projets"
+  provider = "local_projects"
+  timeout  = 60          # champ de bloc, PAS dans params : le défaut runner (10 s)
+                         # est trop court pour un gros scan (~300 projets).
+  params   = { roots = ["D:/projet"], ignore = ["archive-*"], libs = ["guava", "commons-lang3"] }
+
+  [[groups.blocks]]
+  title    = "Projets Rust (vue resserrée)"
+  provider = "local_projects"
+  timeout  = 60
+  params   = { roots = ["D:/rust"], show = ["name", "version", "branch", "dirty", "stack"] }

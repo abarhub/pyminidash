@@ -80,6 +80,7 @@ un appel d'API supplémentaire par PR.
 | `bamboo_user_builds` | table | connexion + `user` (défaut = `connection.user`), `max_results`, `scan` |
 | `bamboo_plan_health` | table | connexion + `plans` |
 | `bamboo_running` | table | connexion + `plans` \| `project` |
+| `local_projects` | table \ cards | `roots: list[str]`, `ignore: list[str] = []`, `max_depth: int = 5`, `libs: list[str] = ["guava","commons-lang3"]`, `show: list[str] = None` — poser `timeout = 60` au bloc |
 
 Ajouter un provider : écrire une fonction décorée `@provider("nom")` dans
 `pyminidash/providers/` renvoyant une `list[Record]`, et l'importer depuis
