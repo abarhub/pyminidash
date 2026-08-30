@@ -197,12 +197,19 @@ def git_info(path: Path) -> GitInfo | None
 - `# branch.upstream` absent → `upstream = None`, `ahead/behind = None` → champ
   `sync` vide.
 - Aucune connexion réseau : `ahead/behind` reflète l'état du dernier `fetch`.
+- La sortie de `git` est lue en `encoding="utf-8", errors="replace"` (git émet
+  de l'UTF-8, la console peut être en cp1252) : `git_info` ne propage jamais de
+  `UnicodeDecodeError`. `git status` porte `GIT_OPTIONAL_LOCKS=0` (pas de prise
+  d'`index.lock` en lecture seule).
 
 ## 5. Parsers écosystèmes
 
 Chaque parser renvoie une dataclass `frozen` dédiée ; **aucun ne lève
 d'exception** : fichier illisible/malformé → info partielle + drapeau/note,
-jamais de bloc en erreur.
+jamais de bloc en erreur. Les lectures se font en `errors="replace"` (fichiers
+non-UTF-8) : aucun `UnicodeDecodeError` ne remonte. En dernier recours,
+`_parse_all` capture toute exception inattendue d'un parser (log `WARNING`) et
+dégrade l'écosystème concerné à `None`.
 
 ### 5.1 `maven.py` — `parse_maven(project_dir) -> MavenInfo`
 
@@ -230,7 +237,10 @@ jamais de bloc en erreur.
 - **libs** (piloté par le param `libs`) : pour chaque `artifactId` demandé,
   recherche dans `<dependencies>` puis `<dependencyManagement>` → `nom
   version` (version interpolée ; `managed` si gérée sans version explicite,
-  `—` si introuvable → non listée).
+  `—` si introuvable → non listée). `_all_deps` est **ancré au niveau projet**
+  (`<dependencies>` + `<dependencyManagement>/<dependencies>` uniquement, jamais
+  plugin/pluginManagement/profiles) et **dédup par artifactId** (une version
+  concrète prime sur `managed`).
 - **frontend-maven-plugin** : recherché dans `<build><plugins>` et
   `<build><pluginManagement>` (artifactId `frontend-maven-plugin`) → version ;
   `nodeVersion` / `npmVersion` lus dans sa `<configuration>` (niveau plugin ou
