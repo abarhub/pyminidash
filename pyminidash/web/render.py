@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pyminidash.format import format_value
-from pyminidash.models import Field, FieldRole, Record
+from pyminidash.models import Field, FieldRole, FieldType, Record
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,12 @@ def to_cards(records: list[Record]) -> list[CardView]:
                 badge = f
             elif f.summary:
                 summary.append(f)
+            elif (
+                format_value(f) == ""
+                and f.url is None
+                and f.type is not FieldType.STATUS
+            ):
+                continue
             else:
                 hidden.append(f)
         cards.append(CardView(title_text, badge, summary, hidden))

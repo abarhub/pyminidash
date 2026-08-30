@@ -12,17 +12,22 @@ class ProviderDef:
     name: str
     func: Callable[..., list]
     signature: inspect.Signature
+    validate: Callable[[dict], None] | None = None
 
 
 REGISTRY: dict[str, ProviderDef] = {}
 
 
-def provider(name: str) -> Callable[[Callable[..., list]], Callable[..., list]]:
+def provider(
+    name: str, *, validate: Callable[[dict], None] | None = None
+) -> Callable[[Callable[..., list]], Callable[..., list]]:
     def decorator(func: Callable[..., list]) -> Callable[..., list]:
         if name in REGISTRY:
             raise ValueError(f"provider '{name}' déjà enregistré")
-        REGISTRY[name] = ProviderDef(name=name, func=func,
-                                     signature=inspect.signature(func))
+        REGISTRY[name] = ProviderDef(
+            name=name, func=func, signature=inspect.signature(func),
+            validate=validate,
+        )
         return func
 
     return decorator

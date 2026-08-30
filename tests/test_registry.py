@@ -69,3 +69,27 @@ def test_validate_params_unknown_key():
 
     with pytest.raises(ValueError, match="signature attendue"):
         validate_params(get_provider("p"), {"nope": 1})
+
+
+def test_provider_accepts_optional_validate_hook():
+    def _v(params):
+        if params.get("bad"):
+            raise ValueError("param bad interdit")
+
+    @provider("withval", validate=_v)
+    def withval(x: int = 1):
+        return []
+
+    pdef = get_provider("withval")
+    assert pdef.validate is _v
+    pdef.validate({"bad": False})           # ne lève pas
+    with pytest.raises(ValueError, match="bad interdit"):
+        pdef.validate({"bad": True})
+
+
+def test_provider_validate_defaults_to_none():
+    @provider("noval")
+    def noval():
+        return []
+
+    assert get_provider("noval").validate is None

@@ -56,7 +56,7 @@ JAMAIS `connection.py` (cycle : config -> providers -> ... -> connection -> conf
 paramètre `connection` des providers est **non typé** ; on n'utilise que `.name`,
 `.base_url`, `.user`, `.client()`.
 
-## Providers disponibles (14)
+## Providers disponibles (15)
 
 | Provider | Type | Params clés |
 |---|---|---|
@@ -74,6 +74,7 @@ paramètre `connection` des providers est **non typé** ; on n'utilise que `.nam
 | `bamboo_user_builds` | table/cards | connexion + `user` (défaut = connexion), `max_results`, `scan` |
 | `bamboo_plan_health` | card | connexion + `plans` |
 | `bamboo_running` | table/cards | connexion + `plans`\|`project` |
+| `local_projects` | table/cards | `roots`, `ignore`, `max_depth`, `libs`, `show` — sans connexion ; poser `timeout = 60` au bloc |
 
 ## Connexions & secrets
 
@@ -133,18 +134,12 @@ le serveur ne démarre pas.
 
 ## Ce qui reste à faire
 
-### Prochain gros morceau : provider « inspection de projets locaux »
+### Fait (PR #4) : provider « inspection de projets locaux »
 
-Noté depuis le tout début (spec cœur §7, mémoire projet). Pour un dépôt Git local donné :
-- version du projet (parser `pom.xml` / `package.json` / `pyproject.toml`...)
-- version de Spring Boot, version d'Angular
-- état Git : dernier commit (date / hash / libellé), présence de fichiers non commités,
-  branche courante
-- pas d'authentification (accès disque local) — ne passe donc PAS par le système de
-  connexions ; provider `connection`-less comme `disk_usage`.
-
-→ nouvelle conversation : brainstorming (périmètre exact des champs, comment désigner les
-projets en config, quels build tools supporter) → spec → plan → subagent-driven.
+Provider `local_projects` : découverte multi-racines (`roots`, `ignore`, `max_depth`),
+parsing par écosystème (Maven / npm / Cargo / Go / Python), état Git parallélisé
+(`ThreadPoolExecutor`), colonnes réglables via `show`. Sans connexion (accès disque local),
+comme `disk_usage`. Spec : `docs/superpowers/specs/2026-08-30-pyminidash-local-projects-design.md`.
 
 ### Idées d'amélioration (non priorisées)
 
