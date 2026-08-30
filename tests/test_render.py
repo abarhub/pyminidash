@@ -42,3 +42,23 @@ def test_to_cards_without_title_or_badge():
     assert card.badge is None
     assert [f.key for f in card.summary_fields] == ["a"]
     assert [f.key for f in card.hidden_fields] == ["b"]
+
+
+def test_to_cards_drops_empty_hidden_fields():
+    recs = [Record(
+        title("name", "Nom", "p1"),
+        text("v", "Version", "1.0", summary=True),
+        text("empty", "Vide", ""),
+        text("full", "Plein", "xxx"),
+    )]
+    card = to_cards(recs)[0]
+    assert [f.key for f in card.hidden_fields] == ["full"]
+
+
+def test_to_cards_keeps_empty_summary_fields():
+    recs = [Record(
+        title("name", "Nom", "p1"),
+        text("v", "Version", "", summary=True),
+    )]
+    card = to_cards(recs)[0]
+    assert [f.key for f in card.summary_fields] == ["v"]
