@@ -148,3 +148,27 @@ def test_empty_blocks_rejected(tmp_path, dummy_providers):
     """)
     with pytest.raises(ConfigError):
         load_config(p)
+
+
+def test_provider_validate_hook_raises_configerror(tmp_path):
+    from pyminidash.registry import provider
+
+    def _v(params):
+        if "show" in params:
+            raise ValueError("show interdit ici")
+
+    @provider("needs_val", validate=_v)
+    def needs_val(show: list | None = None, x: int = 1):
+        return []
+
+    p = _write(tmp_path, """
+        [[groups]]
+        id = "g"
+        title = "G"
+        type = "table"
+          [[groups.blocks]]
+          provider = "needs_val"
+          params = { show = ["a"] }
+    """)
+    with pytest.raises(ConfigError, match="show interdit ici"):
+        load_config(p)

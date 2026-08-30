@@ -118,6 +118,11 @@ class Config(BaseModel):
                     )
                 except ValueError as exc:
                     raise ValueError(f"{where}: {exc}") from None
+                if pdef.validate is not None:
+                    try:
+                        pdef.validate(block.params)
+                    except ValueError as exc:
+                        raise ValueError(f"{where}: {exc}") from None
         return self
 
 
