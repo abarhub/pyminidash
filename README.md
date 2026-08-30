@@ -1,5 +1,7 @@
 # pyminidash
 
+[![Tests](https://github.com/abarhub/pyminidash/actions/workflows/tests.yml/badge.svg)](https://github.com/abarhub/pyminidash/actions/workflows/tests.yml)
+
 Mini-dashboard web local. Affiche des groupes définis dans un fichier TOML ;
 chaque groupe rend des tableaux ou des cards produits par des *providers* Python
 intégrés (espace disque, processus, contrôle d'endpoints HTTP, extraction JSON).

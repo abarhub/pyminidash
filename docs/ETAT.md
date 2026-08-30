@@ -161,3 +161,6 @@ implémenteur + 1 revue par tâche, puis revue globale de branche sur Opus + pas
 correctifs) → **finishing-a-development-branch** → PR.
 
 Note env : `uv run pytest` peut se figer dans certains sandbox → `./.venv/Scripts/python.exe -m pytest`.
+
+CI : `.github/workflows/tests.yml` — `uv sync --frozen` + `uv run pytest` sur `ubuntu-latest` /
+Python 3.13, à chaque push sur `main` et sur les PR. Badge dans `README.md`.
