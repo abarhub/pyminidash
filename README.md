@@ -35,6 +35,11 @@ séparé, **git-ignoré**, à côté de `config.toml` (ou indiqué par `--secret
     cp secrets.example.toml secrets.toml
     # puis renseigner : jira = "...", bitbucket = "...", bamboo = "..."
 
+Si un token manque dans `secrets.toml`, la connexion est simplement **désactivée**
+(avertissement au démarrage) et le serveur démarre quand même — les blocs qui
+l'utilisent s'affichent en erreur. Pratique pour lancer le dashboard avec seulement
+les providers système / HTTP / `local_projects`.
+
 Un bloc référence sa connexion par le champ `connection` :
 
     [[groups.blocks]]
